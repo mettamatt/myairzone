@@ -48,6 +48,43 @@ DEFAULT_PORT = int(env_vars.get("AIRZONE_PORT", "3000"))
 
 def list_systems(client, force_refresh=False, json_output=False):
     """List all systems and zones."""
+    # Show connection status
+    print(f"\n--- Connection Status ---")
+    print(f"Host: {client.host}:{client.port}")
+    
+    try:
+        # Test connectivity with version call
+        import time
+        start_time = time.time()
+        version_data = client.get_version()
+        response_time = time.time() - start_time
+        print(f"Status: Connected (response time: {response_time:.2f}s)")
+        
+        # Get webserver info for WiFi details
+        webserver_info = client.get_webserver_info()
+        if webserver_info:
+            interface = webserver_info.get('interface', 'unknown')
+            print(f"Interface: {interface}")
+            
+            if interface == 'wifi':
+                wifi_rssi = webserver_info.get('wifi_rssi')
+                wifi_quality = webserver_info.get('wifi_quality')
+                wifi_channel = webserver_info.get('wifi_channel')
+                
+                if wifi_rssi is not None:
+                    wifi_info = f"{wifi_rssi} dBm"
+                    if wifi_quality and wifi_quality > 0:
+                        wifi_info += f" ({wifi_quality}%)"
+                    if wifi_channel and wifi_channel > 0:
+                        wifi_info += f" Ch{wifi_channel}"
+                    print(f"WiFi: {wifi_info}")
+                    
+        if 'webserver' in version_data:
+            print(f"Device: {version_data['webserver'].get('alias', 'Unknown')}")
+    except Exception as e:
+        print(f"Status: Connection failed - {str(e)}")
+        return
+    
     systems_data = client.get_all_systems(force_refresh=force_refresh)
     
     if "systems" not in systems_data:
@@ -64,6 +101,21 @@ def list_systems(client, force_refresh=False, json_output=False):
             print(f"\nSystem {system_id}")
             print(f"  Manufacturer: {system.manufacturer}")
             print(f"  Firmware: {system.firmware}")
+            
+            # Available modes
+            modes = system_data.get("modes", [])
+            if modes:
+                mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
+                available_modes = [mode_names.get(m, f"Mode {m}") for m in modes]
+                print(f"  Available Modes: {', '.join(available_modes)}")
+            
+            # Fan speed - check both system and individual zones since it varies
+            speed = system_data.get("speed", None)
+            speeds = system_data.get("speeds", None)
+            if speed is not None:
+                print(f"  Fan Speed: {speed}")
+            if speeds is not None:
+                print(f"  Max Fan Speed: {speeds}")
             
             if system.has_errors:
                 print(f"  Errors: {system.errors}")
@@ -82,6 +134,64 @@ def list_systems(client, force_refresh=False, json_output=False):
                 print(f"    Setpoint: {zone.setpoint}°C")
                 print(f"    Humidity: {zone.humidity}%")
                 print(f"    State: {'On' if zone.is_on else 'Off'}")
+                
+                # Battery and signal info
+                battery = zone._data.get("battery", None)
+                if battery is not None:
+                    print(f"    Battery: {battery}%")
+                
+                
+                thermos_radio = zone._data.get("thermos_radio", None)
+                if thermos_radio is not None:
+                    radio_status = "Wireless" if thermos_radio == 1 else "Wired"
+                    print(f"    Connection: {radio_status}")
+                
+                # Zone-specific fan speed
+                zone_speed = zone._data.get("speed", None)
+                zone_speeds = zone._data.get("speeds", None)
+                speed_values = zone._data.get("speed_values", None)
+                if zone_speed is not None:
+                    speed_info = f"{zone_speed}"
+                    if zone_speeds is not None:
+                        speed_info += f"/{zone_speeds}"
+                    if speed_values:
+                        speed_info += f" (available: {speed_values})"
+                    print(f"    Fan Speed: {speed_info}")
+                
+                # Demand status
+                demands = []
+                if zone._data.get("air_demand", 0) == 1:
+                    demands.append("Air")
+                if zone._data.get("cold_demand", 0) == 1:
+                    demands.append("Cooling")
+                if zone._data.get("heat_demand", 0) == 1:
+                    demands.append("Heating")
+                if zone._data.get("floor_demand", 0) == 1:
+                    demands.append("Floor")
+                if demands:
+                    print(f"    Active Demands: {', '.join(demands)}")
+                
+                # Damper/slat positions
+                slats_info = []
+                slats_v = zone._data.get("slats_vertical", None)
+                slats_h = zone._data.get("slats_horizontal", None)
+                if slats_v is not None:
+                    slats_info.append(f"V:{slats_v}")
+                if slats_h is not None:
+                    slats_info.append(f"H:{slats_h}")
+                if slats_info:
+                    print(f"    Dampers: {', '.join(slats_info)}")
+                
+                # Swing settings
+                swing_info = []
+                vswing = zone._data.get("slats_vswing", None)
+                hswing = zone._data.get("slats_hswing", None)
+                if vswing is not None:
+                    swing_info.append(f"V:{'On' if vswing == 1 else 'Off'}")
+                if hswing is not None:
+                    swing_info.append(f"H:{'On' if hswing == 1 else 'Off'}")
+                if swing_info:
+                    print(f"    Swing: {', '.join(swing_info)}")
                 
                 if zone.has_errors:
                     print(f"    Errors: {zone.errors}")
