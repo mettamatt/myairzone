@@ -60,3 +60,4 @@ htmlcov/
 # Project-specific - Configuration files with sensitive data
 config/airzone_config.json
 airzone_config_backup.json
+CLAUDE.md
