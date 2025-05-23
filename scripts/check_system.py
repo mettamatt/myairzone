@@ -108,7 +108,7 @@ def check_systems(client, force_refresh=False, json_output=False, summary_only=F
                     system_info["zone_details"][zone_id] = {
                         "name": zone.name,
                         "is_on": zone.is_on,
-                        "temperature": zone.temperature,
+                        "temperature": zone.room_temp,
                         "setpoint": zone.setpoint,
                         "mode": zone.mode,
                         "mode_name": zone.mode_name,
@@ -147,7 +147,7 @@ def check_systems(client, force_refresh=False, json_output=False, summary_only=F
                     for zone_id, zone in system.all_zones.items():
                         print(f"    Zone {zone_id}: {zone.name}")
                         print(f"      Mode: {zone.mode_name}")
-                        print(f"      Temperature: {zone.temperature}°C")
+                        print(f"      Temperature: {zone.room_temp}°C")
                         print(f"      Setpoint: {zone.setpoint}°C")
                         print(f"      Humidity: {zone.humidity}%")
                         print(f"      State: {'On' if zone.is_on else 'Off'}")
