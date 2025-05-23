@@ -1,22 +1,39 @@
-# AirZone Project Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# AirZone HVAC Control System Guide
 
 ## Environment
 - Python virtual environment location: `/Users/mettamatt/Sites/myairzone/.venv/`
 - Activate: `source /Users/mettamatt/Sites/myairzone/.venv/bin/activate`
 
-## Commands
-- Run Python scripts: `python script_name.py`
-- Install dependencies: `pip install -r requirements.txt` (if available)
-- List all systems and zones: `python control_airzone.py list`
-- Get specific zone status: `python control_airzone.py status --system [ID] --zone [ID]`
-- Control a zone: `python control_airzone.py control --system [ID] --zone [ID] [options]`
-- Monitor all systems: `python monitor_airzone.py`
+## Development Commands
+- Install dependencies: `pip install -r requirements.txt`
+- Install in development mode: `pip install -e .`
+- Run tests: `python run_tests.py`
+- Run tests with coverage: `python run_tests.py --cov`
+- Run tests with HTML coverage: `python run_tests.py --cov --html`
+- Run specific test file: `python run_tests.py tests/test_specific.py`
 
-## Project Structure
-- `airzone_client.py`: Core client library for Airzone API communication
-- `control_airzone.py`: Command-line tool for viewing and controlling zones
-- `monitor_airzone.py`: Tool for monitoring systems and logging changes
-- `test_airzone.py`: Simple test script for testing API endpoints
+## Application Commands (Unified CLI)
+- List all systems and zones: `python airzone_cli.py list`
+- Get zone status: `python airzone_cli.py status --system [ID] --zone [ID]`
+- Control zone: `python airzone_cli.py control --system [ID] --zone [ID] --power on --setpoint 22`
+- Check system errors: `python airzone_cli.py errors`
+- Create backup: `python airzone_cli.py backup create`
+- List backups: `python airzone_cli.py backup list`
+- Validate backup: `python airzone_cli.py backup validate [file]`
+
+## Architecture Overview
+- **src/airzone_client.py**: Core API client with zone control classes (AirzoneClient, AirzoneSystem, AirzoneZone)
+- **src/airzone_cache.py**: Smart caching system to reduce API calls
+- **src/airzone_backup.py**: Backup/restore functionality for system configurations
+- **src/airzone_errors.py**: Centralized error handling and definitions
+- **cli/airzone_cli.py**: Unified command-line interface for all operations
+- **airzone_cli.py**: Main entry point (wrapper around cli/airzone_cli.py)
+- **run_tests.py**: Custom test runner with coverage support
+- **setup.py**: Package configuration with console script entry point
 
 ## System Information
 - Airzone device located at: `192.168.1.100:3000`
@@ -45,12 +62,13 @@
   4. Ventilation
   5. Dehumidify
 
-## Code Style
-- Use Python 3.x conventions
-- Prefer explicit error handling with try/except blocks
-- Use descriptive variable names
-- Document functions with docstrings
-- Follow PEP 8 style guidelines
+## Code Architecture Patterns
+- **Client-System-Zone hierarchy**: AirzoneClient → AirzoneSystem → AirzoneZone classes
+- **Caching strategy**: Local file cache in logs/ directory with TTL and validation
+- **Error handling**: Custom exception classes in airzone_errors.py with specific error codes
+- **Backup format**: JSON-based configuration snapshots with validation
+- **Testing approach**: pytest with responses library for API mocking, focus on resilient tests
+- **CLI design**: Single entry point with subcommands for different operations
 
 ## Known Issues
 - System 2 has an "IU error CONF" error - Indoor Unit configuration error
