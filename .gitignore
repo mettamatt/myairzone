@@ -40,6 +40,11 @@ backups/
 .cache/
 .pytest_cache/
 
+# Coverage reports
+.coverage
+coverage.xml
+htmlcov/
+
 # IDE
 .idea/
 .vscode/
