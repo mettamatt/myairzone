@@ -9,12 +9,16 @@ making them more maintainable when internal implementation details change.
 import pytest
 import json
 import sys
+import os
 import io
 from unittest.mock import patch, MagicMock
 import responses
 import requests
 
-from control_airzone import main
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from cli.airzone_cli import main
 
 # ----- Test 1: CLI Behavior - Listing Systems -----
 

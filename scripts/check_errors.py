@@ -2,9 +2,14 @@
 
 import logging
 import os
-from airzone_client import AirzoneClient, AirzoneSystem
+import sys
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.airzone_client import AirzoneClient, AirzoneSystem
+from src.airzone_errors import get_error_description, save_error_log, print_error_details
 from dotenv import load_dotenv
-from airzone_errors import get_error_description, save_error_log, print_error_details
 
 # Load environment variables from .env file if it exists
 load_dotenv()

@@ -10,8 +10,12 @@ import logging
 import argparse
 import json
 import sys
+import os
 
-from airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
 
 # Configure logging
 logging.basicConfig(

@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional, Union
 
 # Try to import the cache, but don't fail if it doesn't exist
 try:
-    from airzone_cache import AirzoneCache
+    from .airzone_cache import AirzoneCache
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False

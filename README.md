@@ -10,9 +10,35 @@ A streamlined Python toolkit for backing up, monitoring, and controlling Airzone
 - 🌡 **System Validation:** Verify systems against expected configuration
 - 🚀 **Caching System:** Reduce API calls with intelligent local caching
 - 🧪 **Robust Testing:** Comprehensive unit tests following best practices
+- ⚡ **Zone Control:** Control individual zones (power, temperature, mode)
+
+## Project Structure
+
+The project is organized with a clean directory structure:
+
+```
+myairzone/
+├── src/                     # Core source code
+│   ├── airzone_client.py    # Main API client
+│   ├── airzone_cache.py     # Caching system
+│   ├── airzone_backup.py    # Backup/restore functionality
+│   ├── airzone_errors.py    # Error handling
+│   └── __init__.py          # Package initialization
+├── cli/                     # Command-line interface
+│   └── airzone_cli.py       # Unified CLI
+├── scripts/                 # Utility scripts
+│   ├── check_errors.py      # Error checking
+│   ├── check_system.py      # System validation
+│   └── setup_tests.sh       # Test setup
+├── tests/                   # Test suite
+├── logs/                    # Log files
+├── backups/                 # Backup files
+└── airzone_cli.py           # Main entry point
+```
 
 ## Installation
 
+### Option 1: Standard Installation
 1. Clone this repository and create a virtual environment:
    ```bash
    git clone https://github.com/yourusername/myairzone.git
@@ -26,9 +52,14 @@ A streamlined Python toolkit for backing up, monitoring, and controlling Airzone
    pip install -r requirements.txt
    ```
 
+### Option 2: Development Installation
+```bash
+pip install -e .
+```
+
 ## Usage (Unified CLI)
 
-The project now features a unified command-line interface for all functions:
+The project features a unified command-line interface for all functions:
 
 ```bash
 python airzone_cli.py [options] COMMAND
@@ -36,7 +67,7 @@ python airzone_cli.py [options] COMMAND
 
 ### Core Commands
 
-1. **Check systems and list all zones:**
+1. **List all systems and zones:**
    ```bash
    python airzone_cli.py list
    ```
@@ -46,8 +77,12 @@ python airzone_cli.py [options] COMMAND
    python airzone_cli.py status --system 1 --zone 1
    ```
 
-3. **Check for system errors:**
+3. **Control a zone:**
    ```bash
+   python airzone_cli.py control --system 1 --zone 1 --power on --setpoint 22.5
+   ```
+
+4. **Check for system errors:**
    python airzone_cli.py errors
    ```
 
@@ -84,18 +119,6 @@ The following options can be used with any command:
 --no-cache       # Disable caching
 --force-refresh  # Force refresh from API
 ```
-
-## Project Structure
-
-The project has been streamlined for better maintainability:
-
-- `airzone_client.py` - Core API client library
-- `airzone_cache.py` - Caching system for reducing API calls
-- `airzone_errors.py` - Centralized error handling and reporting
-- `airzone_backup.py` - Backup and restore functionality
-- `airzone_cli.py` - Unified command-line interface
-- `check_errors.py` - System error detection
-- `check_system.py` - System validation
 
 ## Testing
 

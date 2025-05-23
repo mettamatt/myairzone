@@ -61,6 +61,9 @@ def temp_dir():
 def create_test_client():
     """Create a test client factory function."""
     def _create_client(host="test-host", port=3000, use_cache=False):
-        from airzone_client import AirzoneClient
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        from src.airzone_client import AirzoneClient
         return AirzoneClient(host=host, port=port, use_cache=use_cache)
     return _create_client

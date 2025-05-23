@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from airzone_client import AirzoneClient
+from .airzone_client import AirzoneClient
 
 # Configure logging
 logging.basicConfig(

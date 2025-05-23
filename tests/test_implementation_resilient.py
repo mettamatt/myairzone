@@ -12,10 +12,14 @@ import tempfile
 import os
 import json
 import time
+import sys
 
-from airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
-from airzone_cache import AirzoneCache
-from control_airzone import control_zone, get_zone_status
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+from src.airzone_cache import AirzoneCache
+from cli.airzone_cli import control_zone, get_zone_status
 
 # Helper for creating a test client
 def create_test_client(host="test-host", port=3000):
