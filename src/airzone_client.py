@@ -73,6 +73,20 @@ class AirzoneClient:
                     return "systems"
                 else:
                     return f"system_{data['systemID']}"
+        elif endpoint == "iaq":
+            if data is None:
+                return "iaq"
+            
+            if "systemID" in data and "iaqsensorid" in data:
+                if data["systemID"] == 127:
+                    return "iaq_sensors"
+                else:
+                    return f"iaq_sensor_{data['systemID']}_{data['iaqsensorid']}"
+            elif "systemID" in data:
+                if data["systemID"] == 127:
+                    return "iaq_sensors"
+                else:
+                    return f"iaq_system_{data['systemID']}"
         
         # For non-cacheable endpoints or complex data
         return None
@@ -323,6 +337,57 @@ class AirzoneClient:
             self.cache.invalidate(f"system_{system_id}")
             self.cache.invalidate("systems")
             self.cache.invalidate("zones")
+        
+        return response
+    
+    def get_all_iaq_sensors(self, force_refresh: bool = False) -> Dict:
+        """Get all IAQ sensors across all systems.
+        
+        Args:
+            force_refresh: Force refresh from API even if cached data is available
+            
+        Returns:
+            All IAQ sensors data
+        """
+        # Use iaqsensorid 0 to get all airqsensors from system 1
+        return self._make_api_call("iaq", {"systemID": 1, "iaqsensorid": 0}, force_refresh=force_refresh)
+    
+    def get_iaq_sensor(self, system_id: int, sensor_id: int, force_refresh: bool = False) -> Dict:
+        """Get specific IAQ sensor data.
+        
+        Args:
+            system_id: System ID
+            sensor_id: IAQ sensor ID
+            force_refresh: Force refresh from API even if cached data is available
+            
+        Returns:
+            IAQ sensor data
+        """
+        return self._make_api_call("iaq", {"systemID": system_id, "iaqsensorid": sensor_id}, force_refresh=force_refresh)
+    
+    def set_iaq_parameters(self, system_id: int, sensor_id: int, parameters: Dict[str, Any]) -> Dict:
+        """Set parameters for a specific IAQ sensor.
+        
+        Args:
+            system_id: System ID
+            sensor_id: IAQ sensor ID
+            parameters: Parameters to set (e.g., {"iaq_mode_vent": 1})
+            
+        Returns:
+            API response
+            
+        Example:
+            >>> client.set_iaq_parameters(1, 1, {"iaq_mode_vent": 1})
+        """
+        data = {"systemID": system_id, "iaqsensorid": sensor_id, **parameters}
+        response = self._make_put_request("iaq", data)
+        
+        # Invalidate cache for this IAQ sensor after changing parameters
+        if self.use_cache:
+            self.cache.invalidate(f"iaq_sensor_{system_id}_{sensor_id}")
+            # Also invalidate system and all sensors caches as they might contain this sensor's data
+            self.cache.invalidate(f"iaq_system_{system_id}")
+            self.cache.invalidate("iaq_sensors")
         
         return response
         
@@ -952,6 +1017,141 @@ def main():
                 system = AirzoneSystem(client, system_id, system_data)
                 print(f"  Manufacturer: {system.manufacturer}")
                 print(f"  Firmware: {system.firmware}")
+
+
+class AirzoneIAQSensor:
+    """Class representing an Airzone Indoor Air Quality sensor."""
+    
+    def __init__(self, client: AirzoneClient, system_id: int, sensor_id: int, data: Dict = None):
+        """Initialize Airzone IAQ sensor.
+        
+        Args:
+            client: AirzoneClient instance
+            system_id: System ID
+            sensor_id: IAQ sensor ID
+            data: Optional sensor data
+        """
+        self.client = client
+        self.system_id = system_id
+        self.sensor_id = sensor_id
+        self._data = data or {}
+    
+    def refresh(self, force_refresh: bool = False) -> None:
+        """Refresh IAQ sensor data.
+        
+        Args:
+            force_refresh: Force refresh from API even if cached data is available
+        """
+        response = self.client.get_iaq_sensor(self.system_id, self.sensor_id, force_refresh=force_refresh)
+        if isinstance(response, dict) and "data" in response:
+            # API returns data as a list with one sensor, so get the first item
+            sensor_list = response["data"]
+            if isinstance(sensor_list, list) and len(sensor_list) > 0:
+                self._data = sensor_list[0]
+            else:
+                self._data = sensor_list
+        else:
+            self._data = response
+    
+    @property
+    def name(self) -> str:
+        """Get sensor name."""
+        return self._data.get("name", f"IAQ Sensor {self.sensor_id}")
+    
+    @property
+    def co2_level(self) -> int:
+        """Get CO2 level in ppm."""
+        return self._data.get("co2_value", 0)
+    
+    @property
+    def pm25_level(self) -> int:
+        """Get PM2.5 level in μg/m³."""
+        return self._data.get("pm2_5_value", 0)
+    
+    @property
+    def pm10_level(self) -> int:
+        """Get PM10 level in μg/m³."""
+        return self._data.get("pm10_value", 0)
+    
+    @property
+    def tvoc_level(self) -> int:
+        """Get Total Volatile Organic Compounds level in ppb."""
+        return self._data.get("tvoc_value", 0)
+    
+    @property
+    def pressure(self) -> float:
+        """Get atmospheric pressure in hPa."""
+        return self._data.get("pressure_value", 0.0)
+    
+    @property
+    def iaq_index(self) -> int:
+        """Get IAQ index (1-3, where 1=Good, 2=Medium, 3=Bad)."""
+        return self._data.get("iaq_index", 0)
+    
+    @property
+    def iaq_score(self) -> int:
+        """Get IAQ score (0-100, where 100=Excellent, 0=Poor)."""
+        return self._data.get("iaq_score", 0)
+    
+    @property
+    def iaq_index_name(self) -> str:
+        """Get human-readable IAQ index name."""
+        index_names = {
+            1: "Good",
+            2: "Medium", 
+            3: "Bad"
+        }
+        return index_names.get(self.iaq_index, "Unknown")
+    
+    @property
+    def ventilation_mode(self) -> Optional[int]:
+        """Get current ventilation mode."""
+        return self._data.get("iaq_mode_vent")
+    
+    @ventilation_mode.setter
+    def ventilation_mode(self, mode: int) -> None:
+        """Set ventilation mode.
+        
+        Args:
+            mode: Ventilation mode (0=Off, 1=On, 2=Auto)
+            
+        Raises:
+            ValueError: If mode is invalid
+        """
+        if mode not in [0, 1, 2]:
+            raise ValueError("Ventilation mode must be 0 (Off), 1 (On), or 2 (Auto)")
+        
+        self.client.set_iaq_parameters(self.system_id, self.sensor_id, {"iaq_mode_vent": mode})
+        self.refresh(force_refresh=True)
+    
+    def set_ventilation_mode(self, mode: int) -> None:
+        """Set ventilation mode.
+        
+        Args:
+            mode: Ventilation mode (0=Off, 1=On, 2=Auto)
+        """
+        self.ventilation_mode = mode
+    
+    @property
+    def air_quality_summary(self) -> Dict[str, Any]:
+        """Get comprehensive air quality summary."""
+        return {
+            "overall_index": self.iaq_index,
+            "overall_score": self.iaq_score,
+            "quality_name": self.iaq_index_name,
+            "measurements": {
+                "co2_ppm": self.co2_level,
+                "pm2_5_ugm3": self.pm25_level,
+                "pm10_ugm3": self.pm10_level,
+                "tvoc_ppb": self.tvoc_level,
+                "pressure_hpa": self.pressure
+            },
+            "ventilation_mode": self.ventilation_mode
+        }
+    
+    def __str__(self) -> str:
+        """String representation of IAQ sensor."""
+        return f"IAQ Sensor {self.sensor_id} (System {self.system_id}): {self.iaq_index_name} (Score: {self.iaq_score}/100)"
 
 
 if __name__ == "__main__":
