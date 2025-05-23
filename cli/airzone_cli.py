@@ -317,6 +317,8 @@ def main():
     
     check_parser = subparsers.add_parser("check", help="Check systems against expected configuration")
     check_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    check_parser.add_argument("--summary", action="store_true", help="Show only summary information")
+    check_parser.add_argument("--brief", action="store_true", help="Show brief status with errors highlighted")
     
     errors_parser = subparsers.add_parser("errors", help="Check for errors in all systems")
     
@@ -363,7 +365,12 @@ def main():
             get_zone_status(client, args.system, args.zone, args.json, force_refresh=args.force_refresh)
             
         elif args.command == "check":
-            check_systems(client, force_refresh=args.force_refresh, json_output=args.json)
+            if hasattr(args, 'summary') and args.summary:
+                check_systems(client, force_refresh=args.force_refresh, json_output=args.json, summary_only=True)
+            elif hasattr(args, 'brief') and args.brief:
+                check_systems(client, force_refresh=args.force_refresh, json_output=args.json, brief_mode=True)
+            else:
+                check_systems(client, force_refresh=args.force_refresh, json_output=args.json)
             
         elif args.command == "errors":
             check_system_errors()

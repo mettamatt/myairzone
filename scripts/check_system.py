@@ -33,13 +33,15 @@ EXPECTED_ZONES = {
     4: {"D. Max", "D Annelise", "Distribuido"}
 }
 
-def check_systems(client, force_refresh=False, json_output=False):
+def check_systems(client, force_refresh=False, json_output=False, summary_only=False, brief_mode=False):
     """Check all systems and zones to ensure they match expected configuration.
     
     Args:
         client: AirzoneClient instance
         force_refresh: Force refresh from API even if cached data is available
         json_output: Whether to output results in JSON format
+        summary_only: Show only the final summary
+        brief_mode: Show brief status with error highlighting
     """
     systems_data = client.get_all_systems(force_refresh=force_refresh)
     
@@ -114,8 +116,8 @@ def check_systems(client, force_refresh=False, json_output=False):
                 
                 results["systems"][system_id] = system_info
                 
-                # Print output if not JSON
-                if not json_output:
+                # Print output if not JSON and not summary_only
+                if not json_output and not summary_only and not brief_mode:
                     print(f"\nSystem {system_id} - Found: {system_found}")
                     print(f"  Manufacturer: {system.manufacturer}")
                     print(f"  Firmware: {system.firmware}")
@@ -166,7 +168,7 @@ def check_systems(client, force_refresh=False, json_output=False):
                 }
             }
             
-            if not json_output:
+            if not json_output and not summary_only and not brief_mode:
                 print(f"\nSystem {expected_system_id} - Found: False")
                 print(f"  Missing System!")
     
@@ -195,8 +197,30 @@ def check_systems(client, force_refresh=False, json_output=False):
     # Print JSON output if requested
     if json_output:
         print(json.dumps(results, indent=2))
+    elif brief_mode:
+        # Brief mode: Show only critical status and errors
+        print(f"Device: {results['device'].get('alias', 'Unknown')} - {client.host}:{client.port}")
+        print(f"Status: {'✓ All systems operational' if all_systems_found else '✗ Some systems missing'}")
+        
+        # Show errors prominently
+        error_count = 0
+        for system_id, system_info in results["systems"].items():
+            if system_info.get('found') and system_info.get('has_errors', False):
+                error_count += len(system_info.get('errors', []))
+                print(f"⚠️  System {system_id}: {len(system_info.get('errors', []))} error(s)")
+                for error in system_info.get('errors', []):
+                    error_code = error.get('code', 'Unknown')
+                    if error_code == 9:
+                        print(f"   🔴 Error 9: Gateway communication failure")
+                    elif error_code == 12:
+                        print(f"   🔴 Error 12: Webserver communication failure")
+                    elif isinstance(error_code, str) and "CONF" in error_code:
+                        print(f"   🔴 Config Error: Indoor unit mismatch")
+        
+        if error_count == 0:
+            print("✓ No system errors detected")
     else:
-        # Print summary
+        # Print summary (default or summary_only mode)
         print("\n--- Summary ---")
         print(f"Device: {results['device'].get('alias', 'Unknown')} ({results['device'].get('mac', 'Unknown')})")
         print(f"IP: {client.host}:{client.port}")
@@ -204,8 +228,14 @@ def check_systems(client, force_refresh=False, json_output=False):
         print(f"All systems found: {all_systems_found}")
         
         for system_id, system_info in results["systems"].items():
-            print(f"System {system_id}: {'✓' if system_info['found'] else '✗'} " + 
-                  f"Zones: {'✓' if system_info.get('zones', {}).get('complete', False) else '✗'}")
+            status_line = f"System {system_id}: {'✓' if system_info['found'] else '✗'} " + \
+                         f"Zones: {'✓' if system_info.get('zones', {}).get('complete', False) else '✗'}"
+            
+            # Add error indicator
+            if system_info.get('found') and system_info.get('has_errors', False):
+                status_line += f" ⚠️  {len(system_info.get('errors', []))} error(s)"
+            
+            print(status_line)
     
     return all_systems_found
 
