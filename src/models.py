@@ -37,7 +37,8 @@ API_ENDPOINTS = {
     'webserver': 'webserver', 
     'hvac': 'hvac',
     'iaq': 'iaq',
-    'demo': 'demo'
+    'demo': 'demo',
+    'integration': 'integration'
 }
 
 # Zone property metadata for dynamic property creation
