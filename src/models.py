@@ -28,7 +28,9 @@ CACHE_KEY_PATTERNS = {
     ('webserver', None): 'webserver',
     ('hvac', frozenset([('systemID', 127)])): 'systems',
     ('hvac', frozenset([('systemID', 0), ('zoneID', 0)])): 'zones',
-    ('iaq', frozenset([('systemID', 127)])): 'iaq_sensors',
+    ('iaq', frozenset([('systemID', 0), ('iaqsensorid', 0)])): 'iaq_sensors',
+    ('integration', None): 'integration',
+    ('demo', None): 'demo',
 }
 
 # API endpoints

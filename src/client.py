@@ -22,7 +22,25 @@ except ImportError:
 
 
 class AirzoneClient:
-    """Client for interacting with Airzone HVAC systems."""
+    """Client for interacting with Airzone HVAC systems.
+    
+    Supports both IP addresses and mDNS hostnames for device discovery.
+    
+    mDNS Device Names:
+    - Aidoo Wifi: AZWS*.local (e.g., AZW5GRyyyy.local)
+    - Aidoo Pro: AZP*.local (e.g., AZPxxxyyyy.local)
+    - Aidoo Pro Fancoil: AZPFAN*.local (e.g., AZPFANyyyy.local)
+    - Webserver Hub 5G: AZW5GR*.local (e.g., AZW5GRyyyy.local)
+    - Webserver 5G: AZW5GR*.local (e.g., AZW5GRyyyy.local)
+    - Webserver Wifi: AZWS*.local (e.g., AZWSWFyyyy.local)
+    
+    Example:
+        # Using IP address
+        client = AirzoneClient(host="192.168.1.100")
+        
+        # Using mDNS hostname
+        client = AirzoneClient(host="AZW5GRA052.local")
+    """
     
     def __init__(self, host: str = None, port: int = None, use_cache: bool = True, cache_max_age: int = 300):
         """Initialize Airzone client.
@@ -80,12 +98,16 @@ class AirzoneClient:
         
         elif endpoint == 'iaq' and data:
             if 'iaqsensorid' in data and 'systemID' in data:
-                if data['systemID'] == 127:
-                    return 'iaq_sensors'
+                if data['systemID'] == 0 and data['iaqsensorid'] == 0:
+                    return 'iaq_sensors'  # All IAQ sensors across all systems
+                elif data['systemID'] == 0:
+                    return f"iaq_sensor_all_{data['iaqsensorid']}"  # Specific sensor across all systems
+                elif data['iaqsensorid'] == 0:
+                    return f"iaq_system_{data['systemID']}"  # All sensors in specific system
                 else:
                     return f"iaq_sensor_{data['systemID']}_{data['iaqsensorid']}"
             elif 'systemID' in data:
-                if data['systemID'] == 127:
+                if data['systemID'] == 0:
                     return 'iaq_sensors'
                 else:
                     return f"iaq_system_{data['systemID']}"
@@ -134,6 +156,8 @@ class AirzoneClient:
             elif method == "PUT":
                 response = requests.put(url, headers=headers,
                                       data=json.dumps(data) if data else None)
+            elif method == "GET":
+                response = requests.get(url, params=params)
             else:
                 response = requests.request(method, url, headers=headers,
                                           data=json.dumps(data) if data else None)
@@ -148,8 +172,20 @@ class AirzoneClient:
                         self.cache.set(cache_key, response_data)
                 
                 return response_data
+            elif response.status_code == 500:
+                # Handle Airzone API error format
+                try:
+                    error_data = response.json()
+                    if 'errors' in error_data and isinstance(error_data['errors'], list):
+                        error_msg = f"Airzone API Error: {', '.join(error_data['errors'])}"
+                    else:
+                        error_msg = f"Airzone API Error: {error_data}"
+                except:
+                    error_msg = f"Airzone API Error: Status code 500, response: {response.text}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
             else:
-                error_msg = f"Error: Status code {response.status_code}"
+                error_msg = f"HTTP Error: Status code {response.status_code}, response: {response.text}"
                 self.logger.error(error_msg)
                 raise Exception(error_msg)
                 
@@ -242,6 +278,48 @@ class AirzoneClient:
         """
         return self._make_api_call("hvac", {"systemID": system_id, "zoneID": zone_id}, 
                                   force_refresh=force_refresh)
+    
+    # GET request alternatives using query parameters
+    def get_system_via_get(self, system_id: int, force_refresh: bool = False) -> Dict:
+        """Get information about a specific system using GET request with query parameters.
+        
+        Args:
+            system_id: System ID
+            force_refresh: Force refresh from API
+            
+        Returns:
+            System information
+        """
+        return self._make_api_call("hvac", None, force_refresh=force_refresh, 
+                                  method="GET", params={"systemid": system_id})
+    
+    def get_zone_via_get(self, system_id: int, zone_id: int, force_refresh: bool = False) -> Dict:
+        """Get information about a specific zone using GET request with query parameters.
+        
+        Args:
+            system_id: System ID
+            zone_id: Zone ID
+            force_refresh: Force refresh from API
+            
+        Returns:
+            Zone information
+        """
+        return self._make_api_call("hvac", None, force_refresh=force_refresh,
+                                  method="GET", params={"systemid": system_id, "zoneid": zone_id})
+    
+    def get_iaq_sensor_via_get(self, system_id: int, sensor_id: int, force_refresh: bool = False) -> Dict:
+        """Get specific IAQ sensor data using GET request with query parameters.
+        
+        Args:
+            system_id: System ID
+            sensor_id: IAQ sensor ID
+            force_refresh: Force refresh from API
+            
+        Returns:
+            IAQ sensor data
+        """
+        return self._make_api_call("iaq", None, force_refresh=force_refresh,
+                                  method="GET", params={"systemid": system_id, "iaqsensorid": sensor_id})
 
     def set_zone_parameters(self, system_id: int, zone_id: int, parameters: Dict[str, Any]) -> Dict:
         """Set parameters for a specific zone.
@@ -290,6 +368,32 @@ class AirzoneClient:
             IAQ sensor data
         """
         return self._make_api_call("iaq", {"systemID": system_id, "iaqsensorid": sensor_id}, 
+                                  force_refresh=force_refresh)
+    
+    def get_system_iaq_sensors(self, system_id: int, force_refresh: bool = False) -> Dict:
+        """Get all IAQ sensors for a specific system.
+        
+        Args:
+            system_id: System ID
+            force_refresh: Force refresh from API
+            
+        Returns:
+            All IAQ sensors data for the specified system
+        """
+        return self._make_api_call("iaq", {"systemID": system_id, "iaqsensorid": 0}, 
+                                  force_refresh=force_refresh)
+    
+    def get_iaq_sensor_across_systems(self, sensor_id: int, force_refresh: bool = False) -> Dict:
+        """Get a specific IAQ sensor across all systems.
+        
+        Args:
+            sensor_id: IAQ sensor ID
+            force_refresh: Force refresh from API
+            
+        Returns:
+            Specified IAQ sensor data across all systems
+        """
+        return self._make_api_call("iaq", {"systemID": 0, "iaqsensorid": sensor_id}, 
                                   force_refresh=force_refresh)
 
     def set_iaq_parameters(self, system_id: int, sensor_id: int, parameters: Dict[str, Any]) -> Dict:
