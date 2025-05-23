@@ -130,6 +130,41 @@ class AirzoneClient:
             self.logger.error(f"API call failed: {str(e)}")
             raise
     
+    def _make_put_request(self, endpoint: str, data: Dict) -> Dict:
+        """Make a PUT request to the Airzone system for control operations.
+        
+        Args:
+            endpoint: API endpoint (without leading slash)
+            data: Request data (required for PUT requests)
+            
+        Returns:
+            API response as dictionary
+            
+        Raises:
+            Exception: If the API call fails
+        """
+        try:
+            url = f"{self.base_url}/{endpoint}"
+            headers = {"Content-Type": "application/json"}
+            
+            self.logger.debug(f"Making PUT request to {url} with data: {data}")
+            
+            response = requests.put(url, headers=headers, data=json.dumps(data))
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                return response_data
+            else:
+                error_msg = f"PUT request failed: Status code {response.status_code}"
+                if response.text:
+                    error_msg += f", Response: {response.text}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+                
+        except Exception as e:
+            self.logger.error(f"PUT request failed: {str(e)}")
+            raise
+    
     def get_version(self, force_refresh: bool = False) -> Dict:
         """Get the Airzone API version.
         
@@ -226,7 +261,7 @@ class AirzoneClient:
             >>> client.set_zone_parameters(1, 1, {"on": 1, "setpoint": 22})
         """
         data = {"systemID": system_id, "zoneID": zone_id, **parameters}
-        response = self._make_api_call("hvac", data)
+        response = self._make_put_request("hvac", data)
         
         # Invalidate cache for this zone after changing parameters
         if self.use_cache:
@@ -484,6 +519,117 @@ class AirzoneZone:
     def humidity(self) -> int:
         """Get current humidity percentage."""
         return self._data.get("humidity", 0)
+    
+    @property
+    def sleep_timer(self) -> int:
+        """Get current sleep timer in minutes."""
+        return self._data.get("sleep", 0)
+    
+    @sleep_timer.setter
+    def sleep_timer(self, minutes: int) -> None:
+        """Set sleep timer in minutes.
+        
+        Args:
+            minutes: Sleep timer in minutes (0 to disable)
+        """
+        if minutes < 0:
+            raise ValueError("Sleep timer cannot be negative")
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"sleep": minutes})
+        self.refresh(force_refresh=True)
+        self._data["sleep"] = minutes
+    
+    @property
+    def fan_speed(self) -> int:
+        """Get current fan speed."""
+        return self._data.get("speed", 0)
+    
+    @property
+    def available_fan_speeds(self) -> List[int]:
+        """Get list of available fan speeds."""
+        return self._data.get("speed_values", [])
+    
+    @fan_speed.setter
+    def fan_speed(self, speed: int) -> None:
+        """Set fan speed.
+        
+        Args:
+            speed: Fan speed value
+            
+        Raises:
+            ValueError: If speed is not in available speeds
+        """
+        available_speeds = self.available_fan_speeds
+        if available_speeds and speed not in available_speeds:
+            raise ValueError(f"Fan speed {speed} not available. Available speeds: {available_speeds}")
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"speed": speed})
+        self.refresh(force_refresh=True)
+        self._data["speed"] = speed
+    
+    @property
+    def slats_vertical(self) -> Optional[int]:
+        """Get vertical slat position."""
+        return self._data.get("slats_vertical")
+    
+    @slats_vertical.setter
+    def slats_vertical(self, position: int) -> None:
+        """Set vertical slat position.
+        
+        Args:
+            position: Slat position value
+        """
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"slats_vertical": position})
+        self.refresh(force_refresh=True)
+        self._data["slats_vertical"] = position
+    
+    @property
+    def slats_horizontal(self) -> Optional[int]:
+        """Get horizontal slat position."""
+        return self._data.get("slats_horizontal")
+    
+    @slats_horizontal.setter
+    def slats_horizontal(self, position: int) -> None:
+        """Set horizontal slat position.
+        
+        Args:
+            position: Slat position value
+        """
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"slats_horizontal": position})
+        self.refresh(force_refresh=True)
+        self._data["slats_horizontal"] = position
+    
+    @property
+    def vertical_swing(self) -> bool:
+        """Check if vertical swing is enabled."""
+        return self._data.get("slats_vswing", 0) == 1
+    
+    @vertical_swing.setter
+    def vertical_swing(self, enabled: bool) -> None:
+        """Set vertical swing mode.
+        
+        Args:
+            enabled: True to enable vertical swing, False to disable
+        """
+        value = 1 if enabled else 0
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"slats_vswing": value})
+        self.refresh(force_refresh=True)
+        self._data["slats_vswing"] = value
+    
+    @property
+    def horizontal_swing(self) -> bool:
+        """Check if horizontal swing is enabled."""
+        return self._data.get("slats_hswing", 0) == 1
+    
+    @horizontal_swing.setter
+    def horizontal_swing(self, enabled: bool) -> None:
+        """Set horizontal swing mode.
+        
+        Args:
+            enabled: True to enable horizontal swing, False to disable
+        """
+        value = 1 if enabled else 0
+        self.client.set_zone_parameters(self.system_id, self.zone_id, {"slats_hswing": value})
+        self.refresh(force_refresh=True)
+        self._data["slats_hswing"] = value
     
     @property
     def errors(self) -> List[Dict]:
