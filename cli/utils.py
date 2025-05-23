@@ -74,14 +74,17 @@ def format_entity_info(entity: Any, entity_type: str) -> str:
         info.append(f"  Fan Speed: {entity.fan_speed}")
     
     # IAQ sensor specific
-    if hasattr(entity, 'co2_level'):
+    if hasattr(entity, 'co2_level') and entity.co2_level > 0:
         info.append(f"  CO2: {entity.co2_level} ppm")
     
     if hasattr(entity, 'iaq_quality'):
         info.append(f"  Air Quality: {entity.iaq_quality}")
     
     if hasattr(entity, 'ventilation_mode_name'):
-        info.append(f"  Ventilation: {entity.ventilation_mode_name}")
+        info.append(f"  Air Quality Mode: {entity.ventilation_mode_name}")
+    
+    if hasattr(entity, 'low_threshold') and hasattr(entity, 'high_threshold'):
+        info.append(f"  AQ Thresholds: Low={entity.low_threshold}, High={entity.high_threshold}")
     
     # Error information
     if hasattr(entity, 'errors') and entity.errors:
