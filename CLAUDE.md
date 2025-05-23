@@ -27,6 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - List IAQ sensors: `python airzone_cli.py iaq list`
 - Get IAQ sensor status: `python airzone_cli.py iaq status --system [ID] --sensor [ID]`
 - Control IAQ sensor: `python airzone_cli.py iaq control --system [ID] --sensor [ID] --ventilation [0|1|2]`
+  (Note: IAQ functionality is zone-based; sensor ID = zone ID)
 
 ## Architecture Overview (Streamlined)
 The codebase has been refactored for better maintainability and reduced duplication:
