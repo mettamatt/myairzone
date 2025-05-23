@@ -15,7 +15,9 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+from src.client import AirzoneClient
+from src.system import AirzoneSystem
+from src.zone import AirzoneZone
 
 # Configure logging
 logging.basicConfig(

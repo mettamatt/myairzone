@@ -1,0 +1,3585 @@
+openapi: '3.0.2'
+info:
+  title: Airzone Local API
+  version: '1.76'
+  description: | 
+    Airzone's Webserver, Aidoo Pro and Pro Fancoil comes with a local API that provides the users with info about the hvac system and airzone's devices. 
+    
+    ## Allow Chrome to make requests to the Local API
+
+    Because this webpage is served over HTTPS, but the API targets HTTP endpoints locally, web browsers may block the insecure HTTP content by default because it poses potential security risks. Here are the instructions for Google Chrome web browser to enable insecure content for this webpage:
+
+    1.  Click on the lock icon located at the left of the webpage's URL in the address bar.
+    2.  A menu will appear. In this menu, click on 'Site Settings'. 
+    
+        ![Site Settings](https://developers.airzonecloud.com/downloads/localapi2.png)
+    
+    3.  You will be redirected to a settings page specifically for your webpage.
+    4.  Scroll down until you find the setting for 'Insecure content'.
+    5.  Change this setting from 'Block (default)' or 'Ask (default)' to 'Allow'.
+
+        ![Allow insecure content](https://developers.airzonecloud.com/downloads/localapi3.png)
+
+    6.  Go back to the webpage and refresh it. The changes you've made should now be in effect and the document should be able to interact with the HTTP endpoints.
+    
+     Keep in mind that the steps for this process might slightly vary based on the version of your Google Chrome browser. Always ensure that you have the latest version of your browser installed.
+    
+
+    ## mDNS discovery
+
+    mDNS (Multicast DNS) discovery allows access Airzone Devices without using an IP address by clients that support mDNS resolution. mDNS allows devices to discover each other on a local network without the need for a central DNS server. This is particularly useful in environments where devices frequently join and leave the network, such as in home automation or IoT (Internet of Things) setups.
+    The supported Airzone devices with the service enabled will broadcast the services they offer using the mDNS protocol. This means that once an Airzone device is connected to the network, it will announce its presence and the services it provides, making it easily discoverable by other devices on the same network.
+    By using mDNS, clients can resolve the device's hostname to its IP address automatically. This eliminates the need for manual IP address configuration and simplifies the process of connecting to Airzone devices. For example, instead of accessing a device using its IP address (which may change), you can use a consistent hostname like AZW5GRyyyy.local.
+
+
+    ### Announced mDNS Names
+
+    |Device Type | PREFIX | Hostname|
+    |-|-|-|
+    |Aidoo Wifi | AZWS |AZW5GRyyyy|
+    |Aidoo Pro | AZP| AZPxxxyyyy|
+    |Aidoo Pro Fancoil|AZPFAN|AZPFANyyyy|
+    |Webserver Hub 5G|AZW5GR|AZW5GRyyyy|
+    |Webserver 5G|AZW5GR|AZW5GRyyyy|
+    |Webserver Wifi|AZWS|AZWSWFyyyy|
+
+    ### Services Offered
+    The primary service broadcasted is `_http._tcp.local.``, which indicates that the device offers an HTTP service accessible over TCP.
+    There is active development to enable more services like HTTPS, which will provide secure communication channels.
+    
+    ### Example of Use
+    To communicate with one of our devices, use "<hostname>.local" as you would use an IP address or domain. For example, to communicate with a Webserver 5G, use AZW5GRyyyy.local (where yyyy are hexadecimal numbers associated with your device, like AZW5GRA052).
+    The Hostname is the same as the Bluetooth identifier found on the product tag. It is broadcasted using mDNS and can be found using tools like avahi-browse on Linux systems or All My Lan on Windows systems.
+    An example of using the curl tool on an Airzone Aidoo Pro (Fujitsu system) with mDNS and LAPI service enabled:
+
+    ```sh
+    $ curl --location 'AZPFUJ8B09.local:3000/api/v1/hvac' --header 'Content-Type: application/json' --data '{"systemID": 1}'
+    {
+        "data": {
+            "systemID":     1,
+            "mc_connected": 0,
+            "system_firmware":      "10.13",
+            "system_type":  2,
+            "system_technology":    1,
+            "manufacturer": "Fujitsu 3 wires",
+            "errors":       [{}]
+        }
+    }
+    ```
+    ## Web thermostat
+
+    The local API also provides a Web thermostat that showcases the API. You can access it by using the following URL: http://{deviceIP}:3000/
+
+
+
+servers:
+  - url: http://{device IP}:3000/api/v1/
+    variables:
+      device IP:
+        default: '192.168.1.1'
+        description: Local IP address of the device.
+
+paths:
+  /:
+    get:
+      tags: ["Thermostat interface"]
+      summary: Thermostat interface
+      description: |
+        Displays the web interface of the thermostat. **Accessible by web browser at URL http://{deviceIP}:3000/**
+      responses:
+        '200':
+          description: Thermostat interface page
+          content:
+            text/html:
+              schema:
+                type: string
+                example: "<html>...</html>"
+  /hvac:
+    post:
+      summary: Get HVAC info.
+      tags: ["HVAC info"]
+      description:  |
+        This request provides the HVAC parameters relevant to the system. 
+        The body of the request must be a valid json, 
+        depending on the information you want to get you will have to fill the following fields:
+
+        * **ACS parameters**: {"systemID": 0}
+        * **System information**: {"systemID": n} Where n is a value from 1 to 32 for a specific system or 127 for a broadcast request.
+        * **Zone information**: {"systemID": n, "zoneID": m} Where n and b are values from 0 to 32, 0 meaning broadcast.
+
+        When receiving a malformed request the response code will be 500 and the body will provide an error.
+
+        When the request it's correctly processed the response code will be 200 and the body will contain the requested info.
+
+      requestBody:
+          $ref: '#/components/requestBodies/HVACBody'
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HVAC_post_response'
+
+              examples:
+                Aidoo Pro Zone:
+                  $ref: '#/components/examples/Aidoo_pro_zone_response'
+                AirQ:
+                  $ref: '#/components/examples/Aidoo_pro_zone_response_airQ'
+                Aidoo Pro system:
+                  $ref: '#/components/examples/Aidoo_pro_sys_response'
+                Aidoo Pro system with consumption values:
+                  $ref: '#/components/examples/Aidoo_pro_sys_with_consumption_values_response'
+                Aidoo Pro system for vmc:
+                  $ref: '#/components/examples/Aidoo_pro_sys_vmc'
+                Aidoo Pro Modbus Universal system ERV:
+                  $ref: '#/components/examples/Aidoo_pro_sys_vmc'
+                Aidoo Pro system for air to water:
+                  $ref: '#/components/examples/Aidoo_pro_sys_air_to_water_response'
+                Aidoo Pro Zone for air to water:
+                  $ref: '#/components/examples/Aidoo_pro_zone_air_to_water_response'
+                Airzone Zone:
+                  $ref: '#/components/examples/Webserver_zone_response'
+                Airzone Zone w/ errors:
+                  $ref: '#/components/examples/Webserver_zone_response_with_error'
+                Airzone System:
+                  $ref: '#/components/examples/Webserver_sys_response'
+                Airzone System ACS:
+                  $ref: '#/components/examples/Webserver_sys_response_acs'
+                Airzone System Metering:
+                  $ref: '#/components/examples/Webserver_sys_response_metering'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+                Zone_not_available_example:
+                  $ref: '#/components/examples/Zone_not_available_example'
+                System_not_available_example:
+                  $ref: '#/components/examples/System_not_available_example'
+
+    put:
+      summary: Set HVAC info.
+      tags: ["HVAC info"]
+      description: | 
+        This request allow the user to control the system by writing the appropriate  values. 
+        As with POST method you have to indicate the zone and/or the system to which you want to make the change and add the parameter to be changed with the desired value in the request body.
+
+        Example: _{"systemId": 1, "zoneID":1, "sleep": 30}_
+
+      requestBody: 
+        $ref: '#/components/requestBodies/HVACBody_PUT'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HAVC_put_request'
+              examples:
+                Change_sleep_response:
+                  $ref: '#/components/examples/Change_sleep_response'
+                Change_setpoint_and_turn_on:
+                  $ref: '#/components/examples/Change_setpoint_and_turn_on'
+                Name_too_long_error_response:
+                  $ref: '#/components/examples/Name_too_long_error_response'
+    get:
+      summary: Get HVAC info.
+      tags: ["HVAC info"]
+      description:  |
+        This request provides the HVAC parameters relevant to the system.
+        - When only `systemid` is provided, it returns system parameters.
+        - When both `systemid` and `zoneid` are provided, it retrieves zone parameters for the specified system and zone.
+        When the request it's correctly processed the response code will be 200 and the body will contain the requested info.
+      parameters:
+        - in: query
+          name: systemid
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 127
+            example: 1
+          required: true
+          description: The unique identifier of the HVAC system. 1 to 32 for a specific system or 127 for a broadcast request.
+        - in: query
+          name: zoneid
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 32
+            example: 1
+          description: The unique identifier of the HVAC zone within the specified system.  1 to 32 for a specific zone or 0 for a broadcast request.
+          required: false
+      
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HVAC_post_response'
+              examples:
+                Aidoo Pro Zone:
+                  $ref: '#/components/examples/Aidoo_pro_zone_response'
+                AirQ:
+                  $ref: '#/components/examples/Aidoo_pro_zone_response_airQ'
+                Aidoo Pro system:
+                  $ref: '#/components/examples/Aidoo_pro_sys_response'
+                Aidoo Pro system with consumption values:
+                  $ref: '#/components/examples/Aidoo_pro_sys_with_consumption_values_response'
+                Aidoo Pro system for vmc:
+                  $ref: '#/components/examples/Aidoo_pro_sys_vmc'
+                Aidoo Pro Modbus Universal system ERV:
+                  $ref: '#/components/examples/Aidoo_pro_sys_vmc'
+                Aidoo Pro system for air to water:
+                  $ref: '#/components/examples/Aidoo_pro_sys_air_to_water_response'
+                Aidoo Pro Zone for air to water:
+                  $ref: '#/components/examples/Aidoo_pro_zone_air_to_water_response'
+                Airzone Zone:
+                  $ref: '#/components/examples/Webserver_zone_response'
+                Airzone Zone w/ errors:
+                  $ref: '#/components/examples/Webserver_zone_response_with_error'
+                Airzone System:
+                  $ref: '#/components/examples/Webserver_sys_response'
+                Airzone System ACS:
+                  $ref: '#/components/examples/Webserver_sys_response_acs'
+                Airzone System Metering:
+                  $ref: '#/components/examples/Webserver_sys_response_metering'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+                Zone_not_available_example:
+                  $ref: '#/components/examples/Zone_not_available_example'
+                System_not_available_example:
+                  $ref: '#/components/examples/System_not_available_example'
+
+  /integration:
+    post: 
+      summary: | 
+        Get installed driver's version.
+      tags: ["Integration driver"]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/driver'
+
+    put: 
+      summary: Set installed driver's version.
+      tags: ["Integration driver"]
+      requestBody:
+        $ref: '#/components/requestBodies/driver_put_body'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/driver'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+        
+
+  /version:
+    post: 
+      summary: | 
+        Get API version.
+      tags: ["Api version"]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api_version'
+
+  /webserver:
+    post: 
+      summary: | 
+        Get webserver info.
+      tags: ["Webserver Info"]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webserver_post_response'
+  /demo:
+    post: 
+      summary: Zone example request.
+      description: |
+        This request provides a zone example all the parameters available in the API.
+        Please note that your system may not have all the parameters listed here.
+      tags: ["Demo"]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HVAC_post_response'
+              examples:
+                demo:
+                  $ref: '#/components/examples/Demo_response'
+  /iaq:
+    post:
+      summary:  Get IAQ info.
+      description: |
+        This request provides the IAQ parameters. 
+        The body of the request must be a valid json, 
+        depending on the information you want to get you will have to fill the following fields:
+        
+        When receiving a malformed request the response code will be 500 and the body will provide an error.
+
+        When the request it's correctly processed the response code will be 200 and the body will contain the requested info.
+
+        The request flow will be:
+          * Do a system request using /hvac and see that num_airqsensor parameter is higher than 0
+          * If there is at least one Airqsensor, then you can do a iaq request of the previous system.
+          
+      tags: [IAQ Info]
+      requestBody:
+          $ref: '#/components/requestBodies/IAQBody'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IAQ_post_response'
+              examples:
+                iaq:
+                  $ref: '#/components/examples/Airqsensor_response'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+                IAQ_not_available_example:
+                  $ref: '#/components/examples/Zone_not_available_example'
+                System_not_available_example:
+                  $ref: '#/components/examples/System_not_available_example'
+                IAQ_out_of_range_example:
+                  $ref: '#/components/examples/IAQ_out_of_range_example'
+                System_out_of_range_example:
+                  $ref: '#/components/examples/System_out_of_range_example'
+      
+      
+    put:
+      summary: Set IAQ info.
+      tags: [IAQ Info]
+      description: | 
+        This request allow the user to control the airqsensor by writing the appropriate  values. 
+        As with POST method you have to indicate the airqsensor and/or the system to which you want to make the change and add the parameter to be changed with the desired value in the request body.
+
+        Example: _{"systemId": 1, "iaqsensorId":1, "iaq_mode_vent": 2}_
+
+      requestBody: 
+        $ref: '#/components/requestBodies/IAQBody_PUT'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IAQ_put_request'
+              examples:
+                Change_mode_vent_response: 
+                  $ref: '#/components/examples/Change_mode_vent_response'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+                IAQ_not_available_example:
+                  $ref: '#/components/examples/Zone_not_available_example'
+                System_not_available_example:
+                  $ref: '#/components/examples/System_not_available_example'
+                IAQ_out_of_range_example:
+                  $ref: '#/components/examples/IAQ_out_of_range_example'
+                System_out_of_range_example:
+                  $ref: '#/components/examples/System_out_of_range_example'
+
+    get:
+      summary: Get IAQ info.
+      tags: ["IAQ Info"]
+      description:  |
+        This request provides the IAQ parameters.
+
+        When the request it's correctly processed the response code will be 200 and the body will contain the requested info.
+      parameters:
+        - in: query
+          name: systemid
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 32
+            example: 1
+          required: true
+          description: The unique identifier of the HVAC system. 1 to 32 for a specific system or 0 for a broadcast request.
+        - in: query
+          name: iaqsensorid
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 32
+            example: 1
+          description: The unique identifier of the Airq within the specified system.  1 to 32 for a specific iaq or 0 for a broadcast request.
+          required: true
+      
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IAQ_post_response'
+              examples:
+                Aidoo Pro Zone:
+                  $ref: '#/components/examples/Airqsensor_response'
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/request_errors_response'
+              examples:
+                Request_malformed_example:
+                  $ref: '#/components/examples/Request_malformed_example'
+                IAQ_not_available_example:
+                  $ref: '#/components/examples/Zone_not_available_example'
+                System_not_available_example:
+                  $ref: '#/components/examples/System_not_available_example'
+                IAQ_out_of_range_example:
+                  $ref: '#/components/examples/IAQ_out_of_range_example'
+                System_out_of_range_example:
+                  $ref: '#/components/examples/System_out_of_range_example'
+        
+      
+
+
+components:
+  requestBodies:
+
+    driver_put_body:
+      description: Request to set driver name.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/driver'
+
+
+    HVACBody_PUT:
+      description: HVAC PUT payload.
+      content:
+        application/json:
+          schema: 
+            $ref: '#/components/schemas/HAVC_put_request' 
+          examples:
+            sleep:
+              summary: Change sleep configuration.
+              description: Change sleep configuration.
+              value:  
+                systemID: 1
+                zoneID: 2
+                sleep: 30
+
+    HVACBody:
+      description: HVAC POST payload.
+      content:
+        application/json: 
+          schema:
+              $ref: '#/components/schemas/HAVC_post_request' 
+          examples:
+            acs_request:
+              summary: ACS parameters.
+              description: ACS parameters
+              value:
+                systemID: 0
+            system:
+              summary: System.
+              description: System parameters for system 1.
+              value:
+                systemID: 1
+            
+            system_broadcast:
+              summary: System broadcast.
+              description: Broadcast for system parameters.
+              value:
+                systemID: 127
+
+            broadcast:
+              summary: Zone and system broadcast.
+              description: Zone and system broadcast.
+              value:
+                systemID: 0
+                zoneID: 0
+            zone_broadcast:
+              summary: Zone broadcast.
+              description: Zone broadcast for system 1.
+              value:
+                systemID: 1
+                zoneID: 0
+            zone:
+              summary: Zone.
+              description: System 1 Zone 1 parameters.
+              value:
+                systemID: 1
+                zoneID: 1
+
+
+
+    IAQBody_PUT:
+      description: IAQ PUT payload.
+      content:
+        application/json:
+          schema: 
+            $ref: '#/components/schemas/IAQ_put_request' 
+          examples:
+            iaq_mode_vent:
+              summary: Change mode vent configuration.
+              description: Change mode vent configuration.
+              value:  
+                systemID: 1
+                iaqsensorID: 1
+                iaq_mode_vent: 1
+    IAQBody:
+      description: IAQ POST payload.
+      content:
+        application/json: 
+          schema:
+              $ref: '#/components/schemas/IAQ_post_request' 
+          examples:
+            broadcast:
+              summary: IAQ and system broadcast.
+              description: Returns all the parameters of all IAQs of all systems.
+              value:
+                systemID: 0
+                iaqsensorID: 0
+            iaq_broadcast:
+              summary: IAQ broadcast.
+              description: Returns all the parameters of all IAQs of the specified system.
+              value:
+                systemID: 1
+                iaqsensorID: 0
+            system_broadcast:
+              summary: System broadcast.
+              description: Returns the IAQ params for each system. 
+              value:
+                systemID: 0
+                iaqsensorID: 1
+            IAQ:
+              summary: IAQ.
+              description: Returns the IAQ parameters of the specified system.
+              value:
+                systemID: 1
+                iaqsensorID: 1
+
+  examples:
+    Request_malformed_example:
+      summary: Request malformed.
+      description: Request malformed error.
+      value:
+        errors: [error: request malformed]
+
+    Zone_not_available_example:
+      summary: Zone not available.
+      description: Zone not available error.
+      value:
+        errors: [error: zoneid not available]
+
+    System_not_available_example:
+      summary: System not available.
+      description: System not available error.
+      value:
+        errors: [error: systemid not available]
+
+    IAQ_not_available_example:
+      summary: Iaq not available.
+      description: Iaq not available error.
+      value:
+        errors: [error: iaqsensorid not available]
+
+    IAQ_out_of_range_example:
+      summary: IAQ out of range.
+      description: IAQ out of range error.
+      value:
+        errors: [error: iaqsensorid out of range]
+
+    System_out_of_range_example:
+      summary: System out of range.
+      description: System out of range error.
+      value:
+        errors: [error: systemid out of range]
+
+    Aidoo_pro_zone_response:
+      summary: Aidoo Pro zone
+      description: Aidoo response for zone request. Double setpoint auto mode configured.
+      value:
+        data: 
+          - systemID: 1
+            zoneID: 1
+            name: "Zone 01"
+            #thermos_type: 4
+            #thermos_firmware: "0.00"
+            #thermos_radio: 0
+            "on": 0
+            double_sp: 1
+            coolsetpoint: 26
+            coolmaxtemp: 32
+            coolmintemp: 15
+            heatsetpoint: 24
+            heatmaxtemp: 32
+            heatmintemp: 15
+            consumption_ue: 21
+            disch_comp_temp_ue: 1.8
+            exch_heat_temp_iu: 21.3
+            exch_heat_temp_ue: 18.7
+            pe_ue: 1.2
+            ext_temp: 13.4
+            temp_return: 14.8
+            work_temp: 23.1
+            maxTemp: 32
+            minTemp: 15
+            setpoint: 24.5
+            roomTemp: 23.6
+            sleep: 0
+            temp_step: 1
+            modes: [4, 3, 7]
+            mode: 3
+            speed_values: [0,1,2]
+            speeds: 2
+            speed_type: 0
+            speed: 1
+            slats_vertical: 2
+            slats_horizontal: 3
+            slats_vswing: 1
+            slats_hswing: 0
+            units: 0
+            errors: []
+            air_demand: 0
+            cold_demand: 0
+            heat_demand: 0
+            open_window: 0
+            #heatangle: 0
+            #coldangle: 0
+
+    Airqsensor_response:
+      summary: Flexa + IAQ
+      description: IAQ request.
+      value:
+        data: 
+          - systemID: 1
+            iaqsensorID: 1
+            name: "Sensor 01"
+            iaq_mode_vent: 2
+            iaq_index: 1
+            iaq_score: 89
+            co2_value: 403
+            pm2_5_value: 1
+            pm10_value: 0
+            tvoc_value: 216
+            pressure_value: 999
+           
+
+    Aidoo_pro_zone_response_airQ:
+      summary: AirQ (Aidoo Pro + IAQ) 
+      description: AirQ response for zone request. Double setpoint auto mode not configured.
+      value:
+        data: 
+          - systemID: 1
+            zoneID: 1
+            name: "Zone 01"
+            #thermos_type: 4
+            #thermos_firmware: "0.00"
+            #thermos_radio: 0
+            "on": 0
+            double_sp: 0
+            coolsetpoint: 26
+            coolmaxtemp: 32
+            coolmintemp: 15
+            heatsetpoint: 24
+            heatmaxtemp: 32
+            heatmintemp: 15
+            consumption_ue: 21
+            disch_comp_temp_ue: 1.8
+            exch_heat_temp_iu: 21.3
+            exch_heat_temp_ue: 18.7
+            pe_ue: 1.2
+            ext_temp: 13.4
+            temp_return: 14.8
+            work_temp: 23.1
+            maxTemp: 32
+            minTemp: 15
+            setpoint: 24
+            roomTemp: 23
+            sleep: 0
+            temp_step: 1
+            modes: [4, 3, 7]
+            mode: 3
+            speed_values: [0,1,2]
+            speeds: 2
+            speed_type: 0
+            speed: 1
+            slats_vertical: 2
+            slats_horizontal: 3
+            slats_vswing: 1
+            slats_hswing: 0
+            units: 0
+            errors: []
+            air_demand: 0
+            cold_demand: 0
+            heat_demand: 0
+            open_window: 0
+            aq_mode: 2
+            aq_quality: 2
+            aq_thrlow: 10
+            aq_thrhigh: 40
+            #heatangle: 0
+            #coldangle: 0
+     
+    Aidoo_pro_sys_response:
+      summary: Aidoo Pro system
+      description: Aidoo response for system request
+      value:
+        data:
+          systemID: 1
+          mc_connected: 0
+          system_firmware: "6.10"
+          system_type: 2
+          manufacturer: "Unknown"
+          errors: []
+
+    Aidoo_pro_sys_with_consumption_values_response:
+      summary: Aidoo Pro system with consumption values
+      description: Aidoo response for system request
+      value:
+        data:
+          systemID: 1
+          mc_connected: 0
+          system_firmware: "6.10"
+          system_type: 2
+          manufacturer: "Unknown"
+          errors: []
+          energy_data: {
+            "energy_gen_heat": 146,
+            "power_gen_heat": null,
+            "energy_gen_cool": 78,
+            "power_gen_cool": null,
+            "energy_gen_DHW": 226,
+            "power_gen_DHW": null,
+            "power_gen_pv": null,
+            "energy_produced": 450,
+            "energy_consumpt_hp": null,
+            "power_consumpt_hp": null,
+            "power_consumpt_total_building": null,
+            "energy_consumpt_electric_heat_resistor": 0,
+            "energy_consumpt_electric_DHW_resistor": 87,
+            "energy_consumpt_comp_heat": 55,
+            "energy_consumpt_comp_cool": 20,
+            "energy_consumpt_comp_DHW": 45,
+            "energy_consump": 262
+          }
+    Aidoo_pro_sys_vmc:
+      summary: Aidoo Pro Modbus Universal system ERV
+      description: Aidoo Pro Modbus Universal response for system request
+      value:
+        data:
+          systemID: 1
+          zoneID: 1
+          mc_connected: 0
+          name: "Aidoo PRO"
+          erv_power: 1
+          erv_modes: [0,1,2,4,5,6]
+          erv_mode: 2
+          erv_speed_type: 0
+          erv_speeds: 6
+          erv_speed_values: [1,2,4,5,6,7]
+          erv_speed: 3
+          erv_speed_type_2: 0
+          erv_speeds_2: 3
+          erv_speed_values_2: [1,3,5]
+          erv_speed_2: 3
+          erv_bypass_position: 24
+          erv_co2_sensor: 254
+          erv_pm25_sensor: 542
+          erv_extract_air_temp: 18.4
+          erv_supply_air_temp: 24.2
+          erv_outdoor_air_inlet_temp: 17.5
+          erv_tvoc_sensor: 251
+          erv_use_filter_time: 43
+          erv_humidity: 21
+          erv_use_filter_percentage: 3
+          erv_pollution: 45
+          erv_bms_error: 0
+          local_temp: 18.4
+          errors: ["zone": "erv_error_supply_temp"]
+    
+    Aidoo_pro_sys_air_to_water_response:
+      summary: Aidoo Pro Air to Water system response
+      description: Aidoo Pro Air to Water system response for system request
+      value:
+        data:
+        - systemID: 1
+          mc_connected: 0
+          system_firmware: "10.11"
+          system_type: 2
+          system_technology: 2
+          manufacturer: "Midea M-Thermal"
+
+    Aidoo_pro_zone_air_to_water_response:
+      summary: Aidoo Pro Air to Water zone response
+      description: Aidoo Pro Air to Water zone response for zone request
+      value:
+        data:
+        - systemID: 1
+          zoneID: 1
+          name: "Zone 01"
+          "on": 1
+          double_sp: 0
+          coolsetpoint: 5
+          coolmaxtemp: 25
+          coolmintemp: 5
+          heatsetpoint: 35
+          heatmaxtemp: 65
+          heatmintemp: 35
+          maxTemp: 25
+          minTemp: 5
+          setpoint: 5
+          roomTemp: 28.0
+          sleep: 0
+          temp_step: 1
+          modes: [7,2,3]
+          mode: 2
+          speed_values: [0]
+          speeds: 0
+          speed_type: 0
+          speed: 0
+          humidity: 0
+          units: 0
+          air_demand: 1
+          cold_demand: 1
+          heat_demand: 0
+          master_zoneID: 1
+          window_external_source: 0
+          hp_configuration": 0
+
+    Webserver_zone_response:
+      summary: Airzone zone - Single setpoint - without slats - with IAQ
+      description: Airzone response for zone request example
+      value:
+        data: 
+        - systemID: 1
+          zoneID: 1
+          name: "Zone 01"
+          thermos_type: 2
+          thermos_firmware: "3.52"
+          thermos_radio: 1
+          battery: 53
+          coverage: 99
+          "on": 1
+          double_sp: 0
+          coolsetpoint: 23
+          coolmaxtemp: 30
+          coolmintemp: 18
+          heatsetpoint: 23
+          heatmaxtemp: 30
+          heatmintemp: 18
+          maxTemp: 30
+          minTemp: 18
+          setpoint: 23
+          roomTemp: 24
+          sleep: 0
+          temp_step: 0.5
+          modes: [1,4,2,3]
+          mode: 2
+          speed: 0
+          coldStages: 1
+          coldStage: 1
+          heatStages: 1
+          heatStage: 1
+          humidity: 32
+          units: 0
+          errors: []
+          air_demand: 1
+          floor_demand: 0
+          cold_demand: 1
+          heat_demand: 0
+          heatangle: 0
+          coldangle: 0
+          master_zoneID: 1
+          eco_adapt: "off"
+          antifreeze: 0
+          open_window: 0
+          aq_mode: 2
+          aq_quality: 2
+          aq_thrlow: 10
+          aq_thrhigh: 40
+          heat_angle_values: [90, 50, 45, 40]
+          cold_angle_values: [90, 50, 45, 40]
+          heat_angle_conf: 90
+          cold_angle_conf: 45
+          qAdapt: 3
+
+    Webserver_zone_response_with_error:
+      summary: Airzone zone - Single setpoint - with slats - with IAQ - with errors
+      description: Airzone response for zone request example
+      value:
+        data: 
+        - systemID: 1
+          zoneID: 1
+          name: "Zone 01"
+          thermos_type: 2
+          thermos_firmware: "3.52"
+          thermos_radio: 0
+          "on": 1
+          double_sp: 0
+          coolsetpoint: 23
+          coolmaxtemp: 30
+          coolmintemp: 18
+          heatsetpoint: 23
+          heatmaxtemp: 30
+          heatmintemp: 18
+          maxTemp: 30
+          minTemp: 18
+          setpoint: 23
+          roomTemp: 24
+          sleep: 0
+          temp_step: 0.5
+          modes: [1,4,2,3]
+          mode: 2
+          speed: 0
+          coldStages: 1
+          coldStage: 1
+          heatStages: 1
+          heatStage: 1
+          humidity: 32
+          units: 0
+          errors: [
+            Zone: "Presence alarm",
+          ]
+          air_demand: 1
+          floor_demand: 0
+          cold_demand: 1
+          heat_demand: 0
+          heatangle: 0
+          coldangle: 0
+          master_zoneID: 1
+          eco_adapt: "off"
+          antifreeze: 0
+          open_window: 0
+          aq_mode: 2
+          aq_quality: 2
+          aq_thrlow: 10
+          aq_thrhigh: 40
+          slats_vertical: 2
+          slats_horizontal: 3
+          slats_vswing: 1
+          slats_hswing: 0
+    
+    Webserver_sys_response:
+      summary: Airzone system request response
+      description: Airzone response for system request
+      value:  
+        data: 
+            systemID: 1
+            mc_connected: 0
+            system_firmware: "3.36"
+            system_type: 1
+            manufacturer: "Unknown"
+            errors: []
+
+    Webserver_sys_response_metering:
+      summary: Airzone system - with Meter consumption
+      description: Airzone response for system request
+      value:  
+        data: 
+            systemID: 1
+            mc_connected: 1
+            system_firmware: "3.36"
+            system_type: 1
+            manufacturer: "Unknown"
+            errors: []
+            power: 0
+            
+    Webserver_sys_response_acs:
+      summary: Airzone - ACS
+      description: Airzone response for ACS system request. ACS will always be in systemID 0
+      value:  
+        data: 
+            systemID: 0
+            acs_temp: 45.3
+            acs_setpoint: 50
+            acs_mintemp: 25
+            acs_maxtemp: 65
+            acs_power: 1
+            acs_powerful: 1
+
+    Change_sleep_response:
+      summary: Change sleep configuration.
+      description: If the request is successful the response will be the same as the request.
+      value:
+       data:
+        systemID: 1
+        zoneID: 2
+        sleep: 30
+    
+    Change_mode_vent_response:
+      summary: Change mode vent configuration.
+      description: If the request is successful the response will be the same as the request.
+      value:
+       data:
+        systemID: 1
+        iaqsensorID: 1
+        iaq_mode_vent: 2
+
+    Change_setpoint_and_turn_on:
+      summary: Change setpoint and turn on.
+      description: You can change multiples parameters simultaneously.
+      value:
+       data:
+        systemID: 1
+        zoneID: 1
+        "on": 1
+        setpoint: 24.5
+
+    Name_too_long_error_response:
+      summary: Change zone name with more than 11 characters.
+      description: | 
+        This example illustrates what happens when you try to change a zone names with a name longer than 11 characters.
+        
+        As example we have tried to change the name to "0123456789123456" (16 characters).
+
+        The response will have two objects:
+        * __data__: This object has the change, in this case truncate to 11 characters.
+        * __errors__: Same as data but the parameter which could not be configured indicates the motive.
+
+      value:
+        data:
+          systemID: 1
+          zone ID: 1
+          name: "01234567891"
+        errors:
+          systemID: 1
+          zone ID: 1
+          name: "The name is larger than supported (11 Characters). It will be truncated."
+
+    Demo_response:
+      summary: Demo_response.
+      description: | 
+        This response it's a zone example provided by the API with all the parameters available. 
+        Please note that your system may not have all the parameters listed here.
+      value:
+        data:
+        - systemID: 1
+          zoneID: 1
+          name: zona01
+          "on": 1
+          coolsetpoint: 25
+          coolmaxtemp: 30
+          coolmintemp: 18
+          heatsetpoint: 22
+          heatmaxtemp: 30
+          heatmintemp: 15
+          maxTemp: 30
+          minTemp: 15
+          setpoint: 26
+          roomTemp: 20
+          modes: [1,2,3,4]
+          mode: 3
+          speeds: 5
+          speed: 2
+          speed_values: [0,1,2,3,4,5]
+          speed_type: 0
+          coldStages: 3
+          coldStage: 2
+          heatStages: 3
+          heatStage: 1
+          humidity: 43
+          units: 0
+          errors: [
+              Zone: "Error 3",
+              Zone: "Error 4",
+              Zone: "Error 5",
+              Zone: "Error 6",
+              Zone: "Error 7",
+              Zone: "Error 8",
+              Zone: "Presence alarm",
+              Zone: "Window alarm",
+              Zone: "Anti-freezing alarm",
+              Zone: "Zone without thermostat",
+              Zone: "Low battery",
+              Zone: "Active dew",
+              Zone: "Active dew protection",
+              Zone: "F05-H",
+              Zone: "F06-H",
+              Zone: "F05-C",
+              Zone: "F06-C",
+              Zone: "machineready_error",
+              system: "Error 9",
+              system: "Error 13",
+              system: "Error 11",
+              system: "Error 15",
+              system: "Error 16",
+              system: "Error C09",
+              system: "Error C11",
+              system: "IU error IU4",
+              system: "Error IAQ1",
+              system: "Error IAQ4",
+              system: "machineready_error",
+              Zone: "Error IAQ2",
+              Zone: "Error IAQ3"
+          ]
+          air_demand: 1
+          floor_demand: 1
+          aq_mode: 2
+          aq_quality: 2
+          aq_thrlow: 10
+          aq_thrhigh: 40
+          slats_vertical: 2
+          slats_horizontal: 3
+          slats_vswing: 1
+          slats_hswing: 0
+          antifreeze: 1
+          eco_adapt: "manual"
+
+
+  schemas:
+    # Peticion de sistema
+    systemID:
+      type: integer
+      description: |
+        ID of the System to consult.
+
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+       
+        __Available values__: 
+        ```
+        1-32: Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32, Easyzone North America / ZS6, ZBS Systems
+           1: Aidoo Pro
+           0: DHW
+        ```
+      example: 1
+
+    acs_temp:
+      type: number
+      description: | 
+        DHW tank temperature. Read only.
+        
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+       
+        __Available values__: 
+        ```
+           20-99 ºC
+        28-210.2 ºF
+        ```
+
+    acs_setpoint:
+      type: number
+      description: |
+        DHW setpoint temperature.  Read and write.
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+       
+        __Available values__: 
+        ```
+           20-99 ºC
+        28-210.2 ºF
+
+    acs_mintemp:
+      type: number
+      description: |
+        Lower limit DHW temperature. Read only.
+
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+
+    acs_maxtemp:
+      type: number
+      description: | 
+        Upper limit DHW temperature. Read only.
+
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+
+    acs_power:
+      type: integer
+      enum: [0,1]
+      description: | 
+        DHW On/Off status. Read and write, unless write is not available for the machine, in this case an error will be attached to the answer.
+
+
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+
+        __Available values__: 
+        ```
+        1 On
+        0 Off
+        ```
+
+    acs_powerful:
+      type: integer
+      enum: [0,1]
+      description: | 
+        Powerfull On/Off status. Read and write.
+        
+        __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro Air-To-Water
+         ```
+
+        __Available values__: 
+        ```
+        1 On
+        0 Off
+        ```
+
+    mc_connected:
+      type: integer
+      enum: [0,1]
+      description: | 
+        Connected consumption meter. Read only.
+
+         __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+
+        __Available values__: 
+        ```
+        1 On
+        0 Off
+        ```
+
+    power:
+      type: number
+      description: | 
+        Power consumed in the last hour (kW/h). Read only.
+
+         __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+         ```
+
+    system_firmware:
+      type: string
+      description: | 
+        System firmware. Read Only.
+
+         __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+      example:
+        "3.5.0"
+
+    system_type:
+      type: integer
+      enum: [1,2,3,4,5,6,7]
+      description: | 
+        System type. Read only.
+
+         __Available devices__:  
+         ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+
+        __Available values__: 
+        ```
+        1 Flexa 3.0 / IBPro 6 / Easyzone
+        2 Acuazone / IBPro 32 / Aidoo Pro / Aidoo Pro Fancoil
+        3 DZK
+        4 RadianT365
+        5 Flexa 2.0
+        6 ZBS
+        7 Easyzone North America / ZS6        
+        ```
+
+    manufacturer:
+      type: string
+      description: |
+        Machine manufacturer. Read only.
+
+    user_mode:
+      type: integer
+      enum: [0,1,2,3,4,5]
+      description: | 
+        System scene. Read and write.
+                
+        __Available devices__:  
+         ```
+        Easyzone North America / ZS6, ZBS Systems
+         ```
+
+        __Available values__: 
+        ```
+        0 STOP        
+        1 COMFORT
+        2 ABSENT
+        3 NIGHT
+        4 ECO
+        5 HOLIDAY
+        ```
+    system_technology:
+      type: integer
+      enum: [0, 1, 2, 3, 4]
+      description: | 
+        System technology. Read only.
+                
+        __Available devices__:  
+         ```
+        Aidoo Pro
+         ```
+
+        __Available values__: 
+        ```
+        0 Unknown        
+        1 Air conditioning
+        2 Air to Water
+        3 Heat Recovery
+        4 DHW
+        ```
+
+# Parametros de zona
+    #systemID
+    zoneID:
+      type: integer
+      description: |
+        ID of the Zone to consult.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        1-32: Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32, Easyzone North America / ZS6, ZBS Systems
+         1-2: Aidoo Pro
+           0: All zones
+        ```
+
+      example: 1
+    iaqsensorID:
+      type: integer
+      description: |
+        ID of the airqsensor to consult.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+       
+        __Available values__: 
+        ```
+        1 - 32: Flexa 3.6.6
+           0: All airqsensors
+        ```
+
+      example: 1
+    
+    name:
+      type: string
+      description: | 
+        Name of zone. Read and write.
+
+        For /iaq, the name is not available for Aidoo Pro.
+
+        Limited to 11 characters from the following list:
+        ```
+        !\-+., @#*%&/():;¿?_ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÄËÏÖÜÃÕÑÇA-Záéíóúàèìòùâêîôûäëïöüãõñça-z0-9
+        ```
+
+    thermos_type:
+      type: integer
+      enum: [1, 2, 3, 4]
+      description: | 
+        Thermostat type. Read only.
+
+        It's hidden if there is no a thermostat in the zone.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        1 Blueface
+        2 Blueface Zero
+        3 Lite
+        4 Think
+        ```    
+
+    thermos_firmware:
+      type: string
+      description:  |
+        Thermostat version. Read only.
+
+      example: "4.4.0"
+
+    thermos_radio:
+      type: integer
+      enum: [0,1]
+      example: 0
+      description: | 
+        Indicate if the thermostat it's radio or cable. Read Only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        0 Cable
+        1 Radio
+        ```    
+
+    battery:
+      type: integer
+      description: |
+        Battery level. Read only.
+
+        It's hidden if there is no a radio thermostat in the zone.
+
+        __Available devices__:
+        ```
+        Flexa >= 3.2.0 / Acuazone >= 4.2.0 / VAF >= 7.2.0
+        ```
+
+        __Available values__:
+        ```
+        0-100 %
+        ```
+
+    coverage:
+      type: integer
+      description: |
+        Radio coverage. Read only.
+
+        It's hidden if there is no a radio thermostat in the zone.
+
+        __Available devices__:
+        ```
+        Flexa >= 3.2.0 / Acuazone >= 4.2.0 / VAF >= 7.2.0
+        ```
+
+        __Available values__:
+        ```
+        0-100 %
+        ```
+    consumption_ue:
+      type: number
+      example: 23
+      description: |
+        Energy consumption. Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    disch_comp_temp_ue:
+      type: number
+      example: 2.5
+      description: |
+        Discharge compressor temperature. Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    exch_heat_temp_iu:
+      type: number
+      example: 13.2
+      description: |
+        Exchange heat temperature indoor unit . Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    exch_heat_temp_ue:
+      type: number
+      example: 3.2
+      description: |
+        Exchange Heat Temp Outdoor Unit
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    pe_ue:
+      type: number
+      example: 2.5
+      description: |
+        Pressure evaporation . Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    ext_temp:
+      type: number
+      example: 1.4
+      description: |
+        External temperature. Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    temp_return:
+      type: number
+      example: 2.0
+      description: |
+        Return temperature. Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    work_temp:
+      type: number
+      example: 2.0
+      description: |
+        Working temperature. Read only.
+
+        __Available devices__:
+        ```
+        Aidoo Pro
+        ```
+
+    "on":
+      type: integer
+      enum: [0,1]
+      description: |
+        Zone status. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        0 Off
+        1 On
+        ```    
+      example: 1
+
+    double_sp:
+      type: integer
+      enum: [0,1]
+      description: |
+        Indicate if Double setpoint is active. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        0 There is no double setpoint
+        1 There is double setpoint
+        ```    
+             
+    setpoint:
+      type: number
+      description: | 
+        Temperature setpoint. Read and write.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+      example: 23.50
+
+    roomtemp:
+      type: number
+      description: | 
+        Room temperature. Read only.
+                
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        0-99 ºC
+        32-210 ˚F
+        ```
+      example: 22
+
+    maxtemp:
+      type: number
+      description: | 
+        Upper limit setpoint temperature. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+      example: 30
+
+    mintemp:
+      type: number
+      description: | 
+        Lower limit setpoint temperature. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+      example: 18
+
+    coolsetpoint:
+      type: number
+      description: | 
+        Setpoint temperature for cold mode. Read and write.
+        
+        __Available devices__:  
+         ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+       
+        __Available values__: 
+        ```
+          18-30 ˚C
+        64.4-86 ˚F
+        ```
+
+    coolmaxtemp:
+      type: number
+      description: | 
+        Upper limit temperature cold mode. Read only.
+
+        __Available devices__:  
+         ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+       
+        __Available values__: 
+        ```
+          18-30 ˚C
+        64.4-86 ˚F
+        ```
+    
+    coolmintemp:
+      type: number
+      description: | 
+        Lower limit temperature cold mode. Read only.
+        
+        __Available devices__:  
+         ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+         ```
+       
+        __Available values__: 
+        ```
+          18-30 ˚C
+        64.4-86 ˚F
+        ```
+    
+    heatsetpoint:
+      type: number
+      description: | 
+        Setpoint temperature for heat mode. Read and write.
+
+        __Available devices__:  
+        ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+
+    heatmaxtemp:
+      type: number
+      description: | 
+        Upper limit temperature heat mode. Read only.
+        
+        __Available devices__:  
+        ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+
+    heatmintemp:
+      type: number
+      description: | 
+        Lower limit temperature heat mode. Read only.
+        
+        __Available devices__:  
+        ```
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+       
+        __Available values__: 
+        ```
+        15-30 ˚C
+        59-86 ˚F
+        ```
+
+    sleep:
+      type: integer
+      description: | 
+        Sleep timer. Read and write.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+         0 Off.
+        30 Sleep 30 minutes.
+        60 Sleep 60 minutes.
+        90 Sleep 90 minutes.
+        ```
+      enum: [0, 30, 60, 90]
+      example: 30
+
+    temp_step:
+      type: number
+      description: | 
+        Setpoint step. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        0.5ºC | 1ºF 
+          1ºC | 2ºF 
+        ```  
+      example: 1
+
+    modes:
+      type: array
+      items:
+        type: integer
+        enum: [1,2,3,4,5,7]
+      description: | 
+        Operation modes available in the system. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        1 Stop
+        2 Cooling
+        3 Heating
+        4 Fan
+        5 Dry
+        6 Auxiliary heat
+        7 Auto
+        ```  
+      example: [4, 3]
+
+    erv_modes:
+      type: array
+      items:
+        type: integer
+        enum: [0,1,2,3,4,5,6,7,8,9,10]
+      description: | 
+        Operation modes available in a recovery system. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+        0 Stop
+        1 Auto
+        2 Bypass
+        3 Recovery
+        4 Fan
+        5 Regulation Temp
+        6 Purification
+        7 Fan Purification
+        8 Fan Energy
+        9 Cool
+        10 Heal
+        ```  
+      example: [4, 3]
+
+    mode:
+      type: integer
+      enum: [1,2,3,4,5,7]
+      description: | 
+        Operation mode selected for the system.  Read and write.
+
+        Mode must be in *modes* list to be accepted in PUT request, otherwise an error will be attached to the response.
+                
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        1 Stop
+        2 Cooling
+        3 Heating
+        4 Fan
+        5 Dry
+        6 Auxiliary heat
+        7 Auto
+        ```  
+      example: 3
+    
+    erv_mode:
+      type: integer
+      enum: [0,1,2,3,4,5,7,8,9,10]
+      description: | 
+        Operation mode selected for the recovery system.  Read and write.
+
+        Mode must be in *erv_modes* list to be accepted in PUT request, otherwise an error will be attached to the response.
+                
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+        0 Stop
+        1 Auto
+        2 Bypass
+        3 Recovery
+        4 Fan
+        5 Regulation Temp
+        6 Purification
+        7 Fan Purification
+        8 Fan Energy
+        9 Cool
+        10 Heal
+
+        ```  
+      example: 3
+
+    speeds:
+      type: integer
+      enum: [0,1,2,3,4,5,6,7]
+      description: | 
+        Maximum fan speed available. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Auto
+          1 Low speed
+          2 Medium speed
+          3 High speed
+        4-7 Only in individual unit zone modules.
+        ```  
+      example: 3
+
+    speed:
+      type: integer
+      enum: [0,1,2,3,4,5,6,7]
+      description: |
+        Air conditioning unit fan speeds. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Auto
+          1 Low speed
+          2 Medium speed
+          3 High speed
+        4-7 Only in individual unit zone modules.
+        ``` 
+      example: 1
+
+    erv_speed:
+      type: integer
+      enum: [1,2,3,4,5,6,7]
+      description: |
+        Air conditioning unit fan speeds. Read and write.
+
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+          1 Auto
+          2 Super Low speed
+          3 Low speed
+          4 Medium-Low speed
+          5 Medium speed
+          6 High speed
+          7 Max speed
+        ``` 
+      example: 1
+    
+    erv_speed_2:
+      type: integer
+      enum: [1,2,3,4,5,6,7]
+      description: |
+        Air conditioning unit fan speeds. Read and write.
+
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+          1 Auto
+          2 Super Low speed
+          3 Low speed
+          4 Medium-Low speed
+          5 Medium speed
+          6 High speed
+          7 Max speed
+        ``` 
+      example: 1
+
+
+    speed_values:
+      type: array
+      items:
+        type: integer
+      description: | 
+        List of available zone speeds. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Auto
+          1 Low speed
+          2 Medium speed
+          3 High speed
+        4-7 Only in individual unit zone modules.
+        ``` 
+      example: [0, 1, 2, 3]
+
+    erv_speed_values:
+      type: integer
+      enum: [1,2,3,4,5,6,7]
+      description: | 
+        List of available fan speeds. Read only.
+
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+          1 Auto
+          2 Super Low speed
+          3 Low speed
+          4 Medium-Low speed
+          5 Medium speed
+          6 High speed
+          7 Max speed
+          
+        ```  
+      example: [1, 3, 7]
+
+    erv_speed_values_2:
+      type: integer
+      enum: [1,2,3,4,5,6,7]
+      description: | 
+        List of available fan_2 speeds (if exists). Read only.
+
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        
+        __Available values__: 
+        ```
+          1 Auto
+          2 Super Low speed
+          3 Low speed
+          4 Medium-Low speed
+          5 Medium speed
+          6 High speed
+          7 Max speed
+          
+        ```  
+      example: [1, 3, 7]
+
+    speed_type:
+      type: integer
+      enum: [0,1]
+      description: | 
+        Type of speed. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Zone speed.
+          1 Airflow.
+        ```
+    
+    erv_bypass_position:
+      type: number
+      description: |
+        Position of the bypass. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_co2_sensor:
+      type: number
+      description: |
+        CO2 level read by the sensor. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+    
+    erv_pm25_sensor:
+      type: number
+      description: |
+        Level of pm2,5 particules read by the sensor. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_extract_air_temp:
+      type: number
+      description: |
+        Air Temperature of the extract . Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_supply_air_temp:
+      type: number
+      description: |
+        Air Temperature of the supply. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_outdoor_air_inlet_temp:
+      type: number
+      description: |
+        Air Temperature of the outdoor. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_tvoc_sensor:
+      type: number
+      description: |
+        Total volatile organic compounds read by the sensor. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+    erv_use_filter_time:
+      type: number
+      description: |
+        Use time of the filter. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+      example: 22
+
+
+    erv_humidity:
+      type: number
+      description: |
+        Level of humidity. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+
+        __Available values__:  
+        ```
+        0-100%
+        ```
+      example: 15%
+    
+    erv_use_filter_percentage:
+      type: number
+      description: |
+        Use Percentage of the filter. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        __Available values__:  
+        ```
+        0-100%
+        ```
+      example: 15%
+    
+    erv_pollution:
+      type: number
+      description: |
+        Level of polllution. Read only.
+        
+        __Available devices__:  
+        ```
+        Aidoo Pro Modbus Universal
+        ```
+        __Available values__:  
+        ```
+        0-100%
+        ```
+      example: 22
+
+    iaq_mode_vent:
+      type: integer
+      enum: [0,1,2]
+      description: |
+        Ventilation mode of 0-10v Output. Read and write.
+        Only available with iaq_vmc active. Otherwise it value is null.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        __Available values__:  
+        ```
+        null - vmc off
+        0 - Off
+        1 - On
+        2 - Auto
+        
+
+        ```
+      example: 1
+
+    iaq_index:
+      type: integer
+      enum: [1,2,3]
+      description: |
+        Air quality Index. Only Read
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        __Available values__:  
+        ```
+        1 - Good
+        2 - Medium
+        3 - Bad
+
+        ```
+      example: 1
+
+    iaq_score:
+      type: number
+      description: |
+        Air quality score. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        __Available values__:  
+        ```
+        0 - 100
+
+        ```
+      example: 33
+    
+    co2_value:
+      type: number
+      description: |
+        CO2 value. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        
+      example: 856
+    
+    pm2_5_value:
+      type: number
+      description: |
+        PM 2.5 value. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        
+      example: 1
+
+    pm10_value:
+      type: number
+      description: |
+        PM 10 value. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        
+      example: 0
+
+    tvoc_value:
+      type: number
+      description: |
+        TVOC value. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        
+      example: 216
+
+    pressure_value:
+      type: number
+      description: |
+        Pressure value. Only read.
+
+        
+        __Available devices__:  
+        ```
+        Flexa 3.6.6
+        ```
+        
+      example: 999
+
+    coldstages:
+      type: integer
+      description: | 
+        Cooling stages available in the system / Zone. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+         ```
+        1 Air
+        2 Radiant
+        3 Combined
+        ```
+
+    coldstage:
+      type: integer
+      description: | 
+        Cooling stage running. Read and write.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+         ```
+        1 Air
+        2 Radiant
+        3 Combined
+        ```
+
+    heatstages:
+      type: integer
+      description: | 
+        Heating stages available in the system / Zone. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+         ```
+        1 Air
+        2 Radiant
+        3 Combined
+        ```
+
+    heatstage:
+      type: integer
+      description: | 
+        Heating stage running. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+         ```
+        1 Air
+        2 Radiant
+        3 Combined
+        ```
+
+    humidity:
+      type: integer
+      description: |
+        Relative humidity of the Zone.Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+         ```
+        0-100%
+        ```
+        Note: This variable may return zero (0) even if the functionality is not implemented in the system.
+    
+    hp_configuration:
+      type: integer
+      enum: [0,1,2]
+      description: |  
+        Heat pump configuration.Read only.
+
+        __Available devices__:  
+        ```
+        Aidoo Pro Air-To-Water
+        ```
+        
+        __Available values__: 
+         ```
+        0 Leaving water temperature
+        1 Ambient temperature
+        2 Compensation curve
+        ```
+    units:
+      type: integer
+      description: | 
+        Temperature measurement units. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Celsius (ºC).
+          1 Fahrenheit (°F).
+        ```
+
+    air_demand:
+      type: integer
+      enum: [0,1]
+      description: | 
+        System air demand. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Deactivated.
+          1 Activated.
+        ```
+
+    floor_demand:
+      type: integer
+      enum: [0,1]
+      description: | 
+        System floor demand. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+          0 Deactivated.
+          1 Activated.
+        ```
+
+    cold_demand:
+      type: integer
+      enum: [0,1]
+      description: | 
+        System cold demand. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Deactivated.
+          1 Activated.
+        ```
+    heat_demand:
+      type: integer
+      enum: [0,1]
+      description: | 
+        System heat demand. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+          0 Deactivated.
+          1 Activated.
+        ```
+
+    aq_mode:
+      type: integer
+      enum: [0,1,2]
+      description: | 
+        Ionization mode. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        0 Off.
+        1 On.
+        2 Auto.
+        ```
+
+    aq_quality:
+      type: integer
+      enum: [0, 1, 2, 3]
+      description: | 
+        Air quality. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        0 Off
+        1 Good
+        2 Medium
+        3 Low
+        ```
+   
+    aq_thrlow:
+      type: integer
+      description: |
+        Low ionization threshold. Read and write.
+        
+        Must be lower than aq_thrhigh, otherwise an error will be attached to the response.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        0 - 99
+        ```
+
+    aq_thrhigh:
+      type: integer
+      description: | 
+        High ionization threshold. Read and write.
+
+        Must be higher than aq_thrlow, otherwise an error will be attached to the response.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Aidoo Pro
+        ```
+        
+        __Available values__: 
+        ```
+        1 - 100
+        ```
+
+    slats_vswing:
+      type: integer
+      enum: [0,1]
+      description: | 
+        Swing vertical. Read and write.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 No swing.
+        1 Swing.
+        ```
+
+    slats_hswing:
+      type: integer
+      enum: [0,1]
+      description: | 
+        Swing horizontal. Read and write.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 No swing.
+        1 Swing.
+        ```
+
+    slats_vertical:
+      type: integer
+      enum: [0,1,2,3]
+      description: | 
+        Blade position vertical. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 Position 0
+        1 Position 1
+        2 Position 2
+        3 Position 3
+        ```
+
+    slats_horizontal:
+      type: integer
+      enum: [0,1,2,3]
+      description: | 
+        Blade position horizontal. Read and write.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 Position 0
+        1 Position 1
+        2 Position 2
+        3 Position 3
+        ```
+
+    heatangle:
+      type: integer
+      enum: [0,1,2,3,4]
+      description: |
+        Grid angle (heat). Read and write. `Deprecated`
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 90°
+        1 50°
+        2 45°
+        3 40°
+        ```
+
+    coldangle:
+      type: integer
+      enum: [0,1,2,3,4]
+      description: | 
+        Grid angle (cold). Read and write.'Deprecated'
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__: 
+        ```
+        0 90°
+        1 50°
+        2 45°
+        3 40°
+        ```
+
+    errors:
+      type: array
+      items:
+        type: object
+      description: | 
+        System/zone errors. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+         
+        __Available values__:
+        ```
+        Zone errors:   
+          3 Motorized element not connected.
+          4 Motorized element blocked.
+          5 Temperature probe - Open circuit.
+          6 Temperature probe - Short circuit.
+          7 Incompatible element.
+          8 Communication error.
+          IAQ2 Loss of communication between the particle sensor and the main control board.
+          IAQ3 Zone module with ionization not connected.
+                        
+        System errors: 
+          9 Gateway - system communication error.
+          11 Gateway - AC unit communication error.
+          13 Main control board - control module of radiant elements communication error.
+          14 Main control board - expansion module communication error.
+          15 Energy meter communication error.
+          16 Energy meter measurement error.
+          C02 Main control board - production control board communication error.
+          C09 Aerothermal gateway - production control board communication error.
+          C11 Aerothermal gateway - AC unit communication error.
+          IU AC unit decoding error.
+          IAQ1 Loss of communication between the main control board and the ionization processor.
+          IAQ4 Actuator connected directly without ionizer.
+        
+        Zone warnings:
+          Occupancy.
+          Window.
+          Anti-freezing.
+          Active dew protection.
+          Zone without thermostat.
+          Low battery.
+          Active dew. (This warning indicates that there is a risk of water condensation in the floor and that the zone’s radiant system has been turned off. If an air system is available, this will be activated to reduce the humidity in the zone. Available in systems with radiant system in cold mode. )
+        
+        ```
+
+    master_zoneID:
+      type: integer
+      description: |
+        Indicates which zone is master of current zone. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+         
+        __Available values__:
+        '''
+        1-32 Master zone ID
+        '''
+    
+    eco_adapt:
+      type: string
+      description: |
+        Eco adapt level. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__:
+        ```
+            off Off
+         manual Manual
+              a A
+            a_p A+
+           a_pp A++
+        ```
+
+    antifreeze:
+      type: integer
+      enum: [0,1]
+      description: |
+        Antifreeze configuration. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+        
+        __Available values__:
+        ```
+        0 No configured.
+        1 Configured.
+        ```
+    open_window:
+      type: integer
+      enum: [0,1]
+      description: |
+        Indicates whether the window is open based on the status of the configured window sensor. 
+        This parameter is optional and may not be present in the API response when no window sensor is configured or when the device does not support this functionality. Read Only.
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        
+        __Available values__:
+        ```
+        0 The window is closed.
+        1 The window is open.
+
+        ```
+    heat_angle_values:
+        type: array
+        items:
+          type: integer
+        description: |
+          Avaliable values for heat_angle_conf configuration.
+          __Available devices__:  
+          ```
+          Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+          Easyzone North America / ZS6, ZBS Systems
+          ```
+
+    cold_angle_values:
+      type: array
+      items:
+        type: integer
+      description:  |
+        Avaliable values for cold_angle_conf configuration.
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+
+    
+    heat_angle_conf:
+        type: integer
+        description: |
+          Grid angle (heat) possible values are given by heat_angle_values. Read and write.
+          __Available devices__:  
+          ```
+          Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+          Easyzone North America / ZS6, ZBS Systems
+          ```
+
+    cold_angle_conf:
+      type: integer
+      description:  |
+        Grid angle (cold) possible values are given by cold_angle_values. Read and write.
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        ```
+    
+    qAdapt:
+      enum: [0,1,2,3,4]
+      description: |
+        Q-Adapt value. Read and write.
+        __Available devices__:  Flexa and Easyzone.
+        __Available values__:
+        ```
+        0 Standard
+        1 Power
+        2 Silent  
+        3 Minimun
+        4 Máximum 
+        ```
+
+
+# Request driver
+    driver:
+      type: object
+      description: | 
+        Driver version. Read and write.
+        Configured by user with a PUT request to /integration.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      properties:
+        driver:
+          type: string
+          example: "Airzone's Driver"
+# Request version    
+    version:
+      description: |
+        Api version. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      type: string
+      example: "1.64"
+# Request webserver
+    mac: 
+      description: | 
+        Device MAC. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      type: string
+      example: A0:CD:F3:13:76:77
+    
+    wifi_channel: 
+      type: number
+      description: |
+        WiFi channel. Read only.
+        
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      example: 36
+ 
+    wifi_quality: 
+      type: number
+      description: | 
+        WiFi signal quality. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      example: 60
+
+    wifi_rssi: 
+      type: number
+      description: |
+        WiFi received signal strength indicator. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+      example: -44
+    
+    interface: 
+      type: string
+      description: |
+          Indicate if webserver is connected by ethernet or wifi. Read only.
+
+          __Available devices__:  
+          ```
+          Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+          Easyzone North America / ZS6, ZBS Systems
+          Aidoo Pro
+          ```
+          
+          __Available values__: 
+
+          ```
+          wifi
+          ethernet
+          ```
+      example: "wifi"
+
+    ws_firmware:
+      type: string
+      description: | 
+        Webserver or Aidoo firmware version. Read only.
+
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+
+      example: "3.44"
+
+    lmachine_firmware:
+      type: string
+      description: |
+        Gateway to machine firmware's version. 
+        __Available devices__:  
+        ```
+        Aidoo Pro.
+        ```
+      example: "06.20"
+    
+    cloud_connected:
+      type: integer
+      enum: [0,1]
+      description: |
+        Device's Cloud Connection Status. 
+        __Available devices__:  
+        ```
+        Aidoo Pro.
+        Webserver
+        ```
+        __Available values__:
+        ```
+        0 Disconnected
+        1 Connected
+        ```
+      example: "1"
+
+    ws_type:
+      type: string
+      description: | 
+        Webserver type. Read only.
+        __Available devices__:  
+        ```
+        Flexa 3.0 / IBPro 6 / Easyzone, RadianT365, Acuazone / IBPro 32
+        Easyzone North America / ZS6, ZBS Systems
+        Aidoo Pro
+        ```
+        __Available values__:
+        ```
+        ws_az
+        ws_aidoo
+        ```
+      example: "ws_az"
+
+# schemas compuestos 
+
+    energy_data:
+      type: object
+      description: |
+        Consumption Energy Data . Read only. Only Available in specific installations\
+        This object is included when at least one of the energy measurements is available, and it contains the relevant parameters with null values for those measurements that are not available.
+        __Available devices__:  
+        ```
+        Aidoo Pro
+        ```
+        __Available values__:
+        ```
+        List of parameters related to energy measurements.
+        
+
+      properties:
+        energy_gen_heat:
+          type: number
+          description: |
+            Total Heat energy generated. (kWh)
+        power_gen_heat:
+          type: number
+          description: |
+            Power generated in Heat Mode. (kW)
+        energy_gen_cool:
+          type: number
+          description: |
+            Total Cool energy generated. (kWh)
+        power_gen_cool:
+          type: number
+          description: |
+            Power generated in Cool Mode. (kW)
+        energy_gen_DHW:
+          type: number
+          description: |
+            Total energy generated DHW. (kWh)
+        power_gen_DHW:
+          type: number
+          description: |
+            Power generated in DHW Mode. (kW)
+        power_gen_pv:
+          type: number
+          description: |
+            Power generated in Photovoltaic. (kW)
+        energy_produced:
+          type: number
+          description: |
+            Total energy produced. (kWh)
+        energy_consumpt_hp:
+          type: number
+          description: |
+            Total consumpt of the Heat Pump. (kWh)
+        power_consumpt_hp: 
+          type: number
+          description: |
+            Power consumption of the Heat Pump. (kW)
+        power_consumpt_total_building: 
+          type: number
+          description: |
+            Power consumption of the building. (kW)
+        energy_consumpt_electric_heat_resistor:
+          type: number
+          description: |
+            Energy consumption of the Heat Resistor. (kWh)
+        energy_consumpt_electric_DHW_resistor:
+          type: number
+          description: |
+            Energy consumption of the DHW Resistor. (kWh)
+        energy_consumpt_comp_heat:
+          type: number
+          description: |
+            Energy consumption of the compressor in Heat mode. (kWh)
+        energy_consumpt_comp_cool:
+          type: number
+          description: |
+            Energy consumption of the compressor in Cool mode. (kWh)
+        energy_consumpt_comp_DHW:
+          type: number
+          description: |
+            Energy consumption of the compressor in DHW. (kWh)
+        energy_consump:
+          type: number
+          description: |
+            Total energy consumption. (kWh)
+
+    api_version:
+      type: object
+      description: API version answer.
+      properties:
+        schema:
+          $ref: '#/components/schemas/version'
+    
+    HAVC_post_request:
+      type: object
+      properties:
+        systemID:
+          $ref: '#/components/schemas/systemID' 
+        zoneID:
+          $ref: '#/components/schemas/zoneID' 
+      required:
+        - systemID
+    
+    HAVC_put_request:
+      type: object
+      additionalProperties: true
+      properties:
+        systemID:
+          $ref: '#/components/schemas/systemID' 
+        zoneID:
+          $ref: '#/components/schemas/zoneID' 
+      required:
+        - systemID
+
+
+
+    HVAC_post_response:
+      type: object
+      properties:
+        data:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - data
+            properties:
+              systemID:
+                $ref: '#/components/schemas/systemID' 
+              zoneID:
+                $ref: '#/components/schemas/zoneID'
+              acs_temp:
+                $ref: '#/components/schemas/acs_temp'
+              acs_setpoint:
+                $ref: '#/components/schemas/acs_setpoint'
+              acs_mintemp:
+                $ref: '#/components/schemas/acs_mintemp'
+              acs_maxtemp:
+                $ref: '#/components/schemas/acs_maxtemp'
+              acs_power:
+                $ref: '#/components/schemas/acs_power'
+              acs_powerful:
+                $ref: '#/components/schemas/acs_powerful'
+              mc_connected:
+                $ref: '#/components/schemas/mc_connected'
+              power:
+                $ref: '#/components/schemas/power'
+              system_firmware:
+                $ref: '#/components/schemas/system_firmware'
+              system_type:
+                $ref: '#/components/schemas/system_type'
+              user_mode:
+                $ref: '#/components/schemas/user_mode'
+              manufacturer:
+                $ref: '#/components/schemas/manufacturer'
+              name:
+                $ref: '#/components/schemas/name'
+              thermos_type:
+                $ref: '#/components/schemas/thermos_type'
+              thermos_firmware:
+                $ref: '#/components/schemas/thermos_firmware'
+              thermos_radio:
+                $ref: '#/components/schemas/thermos_radio'
+              battery:
+                $ref: '#/components/schemas/battery'
+              coverage:
+                $ref: '#/components/schemas/coverage'
+              consumption_ue:
+                $ref: '#/components/schemas/consumption_ue'
+              disch_comp_temp_ue:
+                $ref: '#/components/schemas/disch_comp_temp_ue'
+              exch_heat_temp_iu:
+                $ref: '#/components/schemas/exch_heat_temp_iu'
+              exch_heat_temp_ue:
+                $ref: '#/components/schemas/exch_heat_temp_ue'
+              pe_ue:
+                $ref: '#/components/schemas/pe_ue'
+              ext_temp:
+                $ref: '#/components/schemas/ext_temp'
+              temp_return:
+                $ref: '#/components/schemas/temp_return'
+              work_temp:
+                $ref: '#/components/schemas/work_temp'
+              "on":
+                $ref: '#/components/schemas/on'
+              double_sp:
+                $ref: '#/components/schemas/double_sp'
+              setpoint:
+                $ref: '#/components/schemas/setpoint'
+              roomtemp:
+                $ref: '#/components/schemas/roomtemp'
+              maxtemp:
+                $ref: '#/components/schemas/maxtemp'
+              mintemp:
+                $ref: '#/components/schemas/mintemp'
+              coolsetpoint:
+                $ref: '#/components/schemas/coolsetpoint'
+              coolmaxtemp:
+                $ref: '#/components/schemas/coolmaxtemp'
+              coolmintemp:
+                $ref: '#/components/schemas/coolmintemp'
+              heatsetpoint:
+                $ref: '#/components/schemas/heatsetpoint'
+              heatmaxtemp:
+                $ref: '#/components/schemas/heatmaxtemp'
+              heatmintemp:
+                $ref: '#/components/schemas/heatmintemp'
+              sleep:
+                $ref: '#/components/schemas/sleep'
+              temp_step:
+                $ref: '#/components/schemas/temp_step'
+              modes:
+                $ref: '#/components/schemas/modes'
+              erv_modes:
+                $ref: '#/components/schemas/erv_modes'
+              mode:
+                $ref: '#/components/schemas/mode'
+              erv_mode:
+                $ref: '#/components/schemas/erv_mode'
+              speeds:
+                $ref: '#/components/schemas/speeds'
+              erv_speed_values:
+                $ref: '#/components/schemas/erv_speed_values'
+              erv_speed_values_2:
+                $ref: '#/components/schemas/erv_speed_values_2'
+              speed:
+                $ref: '#/components/schemas/speed'
+              erv_speed:
+                $ref: '#/components/schemas/erv_speed'
+              erv_speed_2:
+                $ref: '#/components/schemas/erv_speed_2'
+              erv_bypass_position:
+                $ref: '#/components/schemas/erv_bypass_position'
+              erv_co2_sensor:
+                $ref: '#/components/schemas/erv_co2_sensor'
+              erv_pm25_sensor:
+                $ref: '#/components/schemas/erv_pm25_sensor'
+              erv_extract_air_temp:
+                $ref: '#/components/schemas/erv_extract_air_temp'
+              erv_supply_air_temp:
+                $ref: '#/components/schemas/erv_supply_air_temp'
+              erv_outdoor_air_inlet_temp:
+                $ref: '#/components/schemas/erv_outdoor_air_inlet_temp'
+              erv_tvoc_sensor:
+                $ref: '#/components/schemas/erv_tvoc_sensor'
+              erv_use_filter_time:
+                $ref: '#/components/schemas/erv_use_filter_time'
+              erv_humidity:
+                $ref: '#/components/schemas/erv_humidity'
+              erv_use_filter_percentage:
+                $ref: '#/components/schemas/erv_use_filter_percentage'
+              erv_pollution:
+                $ref: '#/components/schemas/erv_pollution'
+              erv_bms_error:
+                $ref: '#/components/schemas/erv_pollution'
+              speed_values:
+                $ref: '#/components/schemas/speed_values'
+              speed_type:
+                $ref: '#/components/schemas/speed_type'
+              coldstages:
+                $ref: '#/components/schemas/coldstages'
+              coldstage:
+                $ref: '#/components/schemas/coldstage'
+              heatstages:
+                $ref: '#/components/schemas/heatstages'
+              heatstage:
+                $ref: '#/components/schemas/heatstage'
+              humidity:
+                $ref: '#/components/schemas/humidity'
+              units:
+                $ref: '#/components/schemas/units'
+              errors:
+                $ref: '#/components/schemas/errors'
+              air_demand:
+                $ref: '#/components/schemas/air_demand'
+              floor_demand:
+                $ref: '#/components/schemas/floor_demand'
+              aq_mode:
+                $ref: '#/components/schemas/aq_mode'
+              aq_quality:
+                $ref: '#/components/schemas/aq_quality'
+              aq_thrlow:
+                $ref: '#/components/schemas/aq_thrlow'
+              aq_thrhigh:
+                $ref: '#/components/schemas/aq_thrhigh'
+              slats_vswing:
+                $ref: '#/components/schemas/slats_vswing'
+              slats_hswing:
+                $ref: '#/components/schemas/slats_hswing'
+              slats_vertical:
+                $ref: '#/components/schemas/slats_vertical'
+              slats_horizontal:
+                $ref: '#/components/schemas/slats_horizontal'
+              heatangle:
+                $ref: '#/components/schemas/heatangle'
+              coldangle:
+                $ref: '#/components/schemas/coldangle'
+              interface:
+                $ref: '#/components/schemas/interface'
+              ws_firmware:
+                $ref: '#/components/schemas/ws_firmware'
+              ws_type:
+                $ref: '#/components/schemas/ws_type'
+              cold_demand:
+                $ref: '#/components/schemas/cold_demand'
+              heat_demand:
+                $ref: '#/components/schemas/heat_demand'
+              master_zoneID:
+                $ref: '#/components/schemas/master_zoneID'
+              eco_adapt:
+                $ref: '#/components/schemas/eco_adapt'
+              antifreeze:
+                $ref: '#/components/schemas/antifreeze'
+              open_window:
+                $ref: '#/components/schemas/open_window'
+              energy_data:
+                $ref: '#/components/schemas/energy_data'
+
+    IAQ_post_request:
+      type: object
+      properties:
+        systemID:
+          $ref: '#/components/schemas/systemID' 
+        iaqsensorID:
+          $ref: '#/components/schemas/iaqsensorID' 
+      required:
+        - systemID
+        - iaqsensorID
+    
+    IAQ_put_request:
+      type: object
+      properties:
+        systemID:
+          $ref: '#/components/schemas/systemID' 
+        iaqsensorID:
+          $ref: '#/components/schemas/iaqsensorID' 
+      required:
+        - systemID
+        - iaqsensorID
+        
+    IAQ_post_response:
+      type: object
+      properties:
+        data:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - data
+            properties:
+              systemID:
+                $ref: '#/components/schemas/systemID' 
+              iaqsensorID:
+                $ref: '#/components/schemas/iaqsensorID'
+              name:
+                $ref: '#/components/schemas/name'
+              IAQ_Mode_Vent:
+                $ref: '#/components/schemas/iaq_mode_vent'
+              IAQ_Index:
+                $ref: '#/components/schemas/iaq_index'
+              IAQ_Score:
+                $ref: '#/components/schemas/iaq_score'
+              CO2_Value:
+                $ref: '#/components/schemas/co2_value'
+              PM2_5_Value:
+                $ref: '#/components/schemas/pm2_5_value'
+              PM10_Value:
+                $ref: '#/components/schemas/pm10_value'
+              TVOC_Value:
+                $ref: '#/components/schemas/tvoc_value'
+              Pressure_Value:
+                $ref: '#/components/schemas/pressure_value'
+
+    Webserver_post_response:
+      type: object
+      properties:
+        mac: 
+          $ref: '#/components/schemas/mac'
+        wifi_channel: 
+          $ref: '#/components/schemas/wifi_channel'
+        wifi_quality: 
+          $ref: '#/components/schemas/wifi_quality'
+        wifi_rssi: 
+          $ref: '#/components/schemas/wifi_rssi'
+        interface: 
+          $ref: '#/components/schemas/interface'
+        ws_firmware: 
+          $ref: '#/components/schemas/ws_firmware'
+        lmachine_firmware: 
+          $ref: '#/components/schemas/lmachine_firmware'
+        cloud_connected:
+          $ref: '#/components/schemas/cloud_connected'
+        ws_type: 
+          $ref: '#/components/schemas/ws_type'
+
+
+
+    request_errors_response:
+      type: object
+      properties:
+        errors:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message.
+              example: request malformed
+
+    
+

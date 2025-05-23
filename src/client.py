@@ -273,7 +273,7 @@ class AirzoneClient:
         Returns:
             All IAQ sensors data
         """
-        return self._make_api_call("iaq", {"systemID": 1, "iaqsensorid": 0}, 
+        return self._make_api_call("iaq", {"systemID": 0, "iaqsensorid": 0}, 
                                   force_refresh=force_refresh)
     
     def get_iaq_sensor(self, system_id: int, sensor_id: int, force_refresh: bool = False) -> Dict:
@@ -319,6 +319,27 @@ class AirzoneClient:
             Demo zone data with all possible parameters
         """
         return self._make_api_call("demo")
+    
+    def get_integration_driver(self) -> Dict:
+        """Get installed integration driver version.
+        
+        Returns:
+            Integration driver information
+        """
+        return self._make_api_call("integration")
+    
+    def set_integration_driver(self, driver_name: str, driver_version: str) -> Dict:
+        """Set integration driver information.
+        
+        Args:
+            driver_name: Name of the integration driver
+            driver_version: Version of the integration driver
+            
+        Returns:
+            API response
+        """
+        data = {"driver_name": driver_name, "driver_version": driver_version}
+        return self._make_api_call("integration", data, method="PUT")
     
     def invalidate_cache(self, key: Optional[str] = None) -> bool:
         """Invalidate cache.

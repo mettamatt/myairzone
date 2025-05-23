@@ -64,6 +64,6 @@ def create_test_client():
         import sys
         import os
         sys.path.insert(0, os.path.dirname(__file__))
-        from src.airzone_client import AirzoneClient
+        from src.client import AirzoneClient
         return AirzoneClient(host=host, port=port, use_cache=use_cache)
     return _create_client
