@@ -121,8 +121,11 @@ def list_systems(client: AirzoneClient, force_refresh: bool = False, json_output
         if system.has_errors:
             print(f"  Errors: {system.errors}")
             for error in system.errors:
-                error_code = error.get("error", {}).get("code", "Unknown")
-                print_error_details(error_code)
+                if isinstance(error, dict):
+                    error_code = error.get("error", {}).get("code", "Unknown") if isinstance(error.get("error"), dict) else str(error.get("error", "Unknown"))
+                else:
+                    error_code = str(error)
+                print(f"    Error Code: {error_code}")
         
         # Show zones
         for zone in system.all_zones.values():

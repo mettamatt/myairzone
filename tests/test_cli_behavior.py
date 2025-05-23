@@ -102,7 +102,7 @@ def test_cli_lists_systems():
     
     # Capture stdout to verify behavior
     with patch('sys.stdout', new_callable=io.StringIO) as mock_stdout, \
-         patch('sys.argv', ['control_airzone.py', 'list']), \
+         patch('sys.argv', ['control_airzone.py', '--host', TEST_HOST, '--port', str(TEST_PORT), 'list']), \
          patch('cli.utils.create_client') as mock_create_client:
         
         # Mock create_client to return a test client
