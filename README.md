@@ -50,7 +50,9 @@ myairzone/
 ## Installation
 
 ### Option 1: Standard Installation
+
 1. Clone this repository and create a virtual environment:
+
    ```bash
    git clone https://github.com/yourusername/myairzone.git
    cd myairzone
@@ -59,6 +61,7 @@ myairzone/
    ```
 
 2. Install required packages:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -70,10 +73,12 @@ myairzone/
    ```
 
 ### Option 2: Development Installation
+
 For developers who want to make changes to the code:
+
 ```bash
 # Clone and navigate to the project
-git clone https://github.com/yourusername/myairzone.git
+git clone https://github.com/mettamatt/myairzone.git
 cd myairzone
 
 # Create and activate virtual environment
@@ -114,21 +119,25 @@ python airzone_cli.py backup create
 The project features a unified command-line interface for all functions. There are multiple ways to run it:
 
 ### Method 1: Main Entry Point (Recommended)
+
 ```bash
 python airzone_cli.py [options] COMMAND
 ```
 
 ### Method 2: Direct CLI Script
+
 ```bash
 python cli/airzone_cli.py [options] COMMAND
 ```
 
 ### Method 3: After Development Installation
+
 ```bash
 airzone [options] COMMAND
 ```
 
 **Note:** Make sure your virtual environment is activated before running any commands:
+
 ```bash
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
@@ -136,50 +145,56 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ### Core Commands
 
 1. **List all systems and zones:**
+
    ```bash
    python airzone_cli.py list
    ```
 
 2. **Get status of a specific zone:**
+
    ```bash
    # Get human-readable status
    python airzone_cli.py status --system 1 --zone 1
-   
+
    # Get JSON output for scripting
    python airzone_cli.py status --system 1 --zone 1 --json
    ```
 
 3. **Control a zone:**
+
    ```bash
    # Turn on a zone and set temperature
    python airzone_cli.py control --system 1 --zone 1 --power on --setpoint 22.5
-   
+
    # Change mode to cooling
    python airzone_cli.py control --system 1 --zone 1 --mode 2
-   
+
    # Turn off a zone
    python airzone_cli.py control --system 1 --zone 1 --power off
-   
+
    # Multiple changes at once
    python airzone_cli.py control --system 1 --zone 1 --power on --setpoint 23 --mode 3
    ```
-   
+
    **Available modes:**
+
    - `1`: Stop
-   - `2`: Cooling  
+   - `2`: Cooling
    - `3`: Heating
    - `4`: Ventilation
    - `5`: Dehumidify
 
 4. **Check for system errors:**
+
    ```bash
    python airzone_cli.py errors
    ```
 
 5. **Validate system configuration:**
+
    ```bash
    python airzone_cli.py check
-   
+
    # Get JSON output
    python airzone_cli.py check --json
    ```
@@ -240,7 +255,7 @@ python run_tests.py
 python run_tests.py --cov
 
 # Generate HTML coverage report
-python run_tests.py --cov --html 
+python run_tests.py --cov --html
 
 # Run tests on a specific path
 python run_tests.py tests/test_implementation_resilient.py
@@ -258,6 +273,7 @@ python run_tests.py tests/test_implementation_resilient.py
 ## System Details
 
 ### Device Information
+
 - Alias: YOUR_DEVICE_ALIAS
 - MAC Address: 00:11:22:33:44:55
 - IP Address: 192.168.1.100
@@ -265,14 +281,17 @@ python run_tests.py tests/test_implementation_resilient.py
 
 ### System Overview
 
-1. **System 1** 
+1. **System 1**
+
    - Zone: Salón
 
-2. **System 2** 
+2. **System 2**
+
    - Zones: Oficina, D. Invitado, D.Carmen
    - Known Issue: "IU error CONF" - Indoor Unit configuration error
 
 3. **System 3**
+
    - Zone: D Principal
    - Known Issue: "Error 9" - Gateway-System communication error
 
@@ -324,28 +343,31 @@ zone.turn_on()        # Turn on the zone
 ### Common Issues
 
 1. **ModuleNotFoundError: No module named 'requests'**
+
    ```bash
    # Make sure virtual environment is activated
    source .venv/bin/activate
-   
+
    # Install dependencies
    pip install -r requirements.txt
    ```
 
 2. **ImportError: No module named 'src'**
+
    ```bash
    # Make sure you're in the project root directory
    cd /path/to/myairzone
-   
+
    # Run from the project root
    python airzone_cli.py --help
    ```
 
 3. **Connection refused or timeout**
+
    ```bash
    # Check if Airzone device is accessible
    ping YOUR_AIRZONE_IP
-   
+
    # Use different host/port
    python airzone_cli.py --host YOUR_AIRZONE_IP --port 3000 list
    ```
