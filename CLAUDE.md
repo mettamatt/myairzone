@@ -24,9 +24,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Create backup: `python airzone_cli.py backup create`
 - List backups: `python airzone_cli.py backup list`
 - Validate backup: `python airzone_cli.py backup validate [file]`
+- List IAQ sensors: `python airzone_cli.py iaq list`
+- Get IAQ sensor status: `python airzone_cli.py iaq status --system [ID] --sensor [ID]`
+- Control IAQ sensor: `python airzone_cli.py iaq control --system [ID] --sensor [ID] --ventilation [0|1|2]`
 
 ## Architecture Overview
-- **src/airzone_client.py**: Core API client with zone control classes (AirzoneClient, AirzoneSystem, AirzoneZone)
+- **src/airzone_client.py**: Core API client with zone control classes (AirzoneClient, AirzoneSystem, AirzoneZone, AirzoneIAQSensor)
 - **src/airzone_cache.py**: Smart caching system to reduce API calls
 - **src/airzone_backup.py**: Backup/restore functionality for system configurations
 - **src/airzone_errors.py**: Centralized error handling and definitions
@@ -51,6 +54,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Specific Zone: `POST /api/v1/hvac` with `{"systemID": [ID], "zoneID": [ID]}`
   - Webserver: `POST /api/v1/webserver`
   - Control: `POST /api/v1/hvac` with parameters like `{"systemID": [ID], "zoneID": [ID], "on": 1, "setpoint": 22}`
+  - IAQ Sensors: `POST /api/v1/iaq` with `{"systemID": [ID], "iaqsensorid": [ID]}` (0 for all sensors)
+  - IAQ Control: `PUT /api/v1/iaq` with parameters like `{"systemID": [ID], "iaqsensorid": [ID], "iaq_mode_vent": 2}`
 
 ## Zone Control Options
 - Power on/off: `"on": 1` or `"on": 0`
@@ -61,6 +66,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   3. Heating
   4. Ventilation
   5. Dehumidify
+
+## IAQ Sensor Options (Flexa 3.6.6 only)
+- Ventilation mode: `"iaq_mode_vent": [mode]` where mode is:
+  0. Off
+  1. On  
+  2. Auto
+- Read-only measurements:
+  - CO2 level in ppm: `"co2_value"`
+  - PM2.5 level in μg/m³: `"pm2_5_value"`
+  - PM10 level in μg/m³: `"pm10_value"`
+  - TVOC level in ppb: `"tvoc_value"`
+  - Pressure in hPa: `"pressure_value"`
+  - Air quality index (1-3): `"iaq_index"` (1=Good, 2=Medium, 3=Bad)
+  - Air quality score (0-100): `"iaq_score"`
 
 ## Code Architecture Patterns
 - **Client-System-Zone hierarchy**: AirzoneClient → AirzoneSystem → AirzoneZone classes
