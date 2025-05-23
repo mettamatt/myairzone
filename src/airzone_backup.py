@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 from datetime import datetime
 
-from .airzone_client import AirzoneClient
+from .client import AirzoneClient
+from .system import AirzoneSystem
+from .zone import AirzoneZone
 
 # Configure logging
 logging.basicConfig(
