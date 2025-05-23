@@ -227,7 +227,8 @@ def control_zone(client: AirzoneClient, system_id: int, zone_id: int, **params):
 @handle_cli_errors
 def check_errors_command(client: AirzoneClient):
     """Check for system errors."""
-    check_system_errors(client)
+    from scripts.check_errors import check_system_errors
+    check_system_errors()
 
 
 @handle_cli_errors

@@ -89,7 +89,7 @@ def check_system_errors():
                                 "zone_id": zone_id,
                                 "zone_name": zone.name,
                                 "error_code": error_code,
-                                "temperature": zone.temperature,
+                                "temperature": zone.room_temp,
                                 "setpoint": zone.setpoint,
                                 "is_on": zone.is_on
                             })

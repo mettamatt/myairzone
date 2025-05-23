@@ -157,6 +157,17 @@ class AirzoneZone:
         """Get sleep timer in minutes."""
         return self._data.get("sleep", 0)
     
+    # Error handling
+    @property
+    def errors(self) -> List[Dict]:
+        """Get zone errors."""
+        return self._data.get("errors", [])
+    
+    @property
+    def has_errors(self) -> bool:
+        """Check if zone has errors."""
+        return len(self.errors) > 0
+    
     @sleep_timer.setter
     def sleep_timer(self, minutes: int) -> None:
         """Set sleep timer (0-1440 minutes)."""

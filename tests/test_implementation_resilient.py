@@ -110,13 +110,13 @@ def test_zone_temperature_control():
     responses.add(
         responses.POST,
         "http://test-host:3000/api/v1/hvac",
-        json={"data": initial_data},
+        json={"data": [initial_data]},
         status=200
     )
     
-    # Second response for setting temperature
+    # Second response for setting temperature (PUT request)
     responses.add(
-        responses.POST,
+        responses.PUT,
         "http://test-host:3000/api/v1/hvac",
         json={"status": "success"},
         status=200
@@ -126,7 +126,7 @@ def test_zone_temperature_control():
     responses.add(
         responses.POST,
         "http://test-host:3000/api/v1/hvac",
-        json={"data": updated_data},
+        json={"data": [updated_data]},
         status=200
     )
     
@@ -165,13 +165,13 @@ def test_zone_control_workflow():
     responses.add(
         responses.POST,
         "http://test-host:3000/api/v1/hvac",
-        json=zone_data,
+        json={"data": [zone_data["data"]]},
         status=200
     )
     
-    # Mock setting temperature
+    # Mock setting temperature (PUT request)
     responses.add(
-        responses.POST,
+        responses.PUT,
         "http://test-host:3000/api/v1/hvac",
         json={"status": "success"},
         status=200
@@ -183,7 +183,7 @@ def test_zone_control_workflow():
     responses.add(
         responses.POST,
         "http://test-host:3000/api/v1/hvac",
-        json=updated_zone,
+        json={"data": [updated_zone["data"]]},
         status=200
     )
     
@@ -198,7 +198,7 @@ def test_zone_control_workflow():
     responses.replace(
         responses.POST,
         "http://test-host:3000/api/v1/hvac",
-        json=updated_zone,
+        json={"data": [updated_zone["data"]]},
         status=200
     )
     
