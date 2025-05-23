@@ -96,14 +96,16 @@ class AirzoneClient:
         return None
 
     def _make_api_call(self, endpoint: str, data: Optional[Dict] = None, 
-                      force_refresh: bool = False, method: str = "POST") -> Dict:
+                      force_refresh: bool = False, method: str = "POST", 
+                      params: Optional[Dict] = None) -> Dict:
         """Make an API call to the Airzone system.
         
         Args:
             endpoint: API endpoint (without leading slash)
-            data: Optional request data
+            data: Optional request data (for POST/PUT)
             force_refresh: Force refresh from API even if cached data is available
             method: HTTP method (default POST)
+            params: Optional query parameters (for GET)
             
         Returns:
             API response as dictionary
