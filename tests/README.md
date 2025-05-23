@@ -26,7 +26,9 @@ With the new project structure, imports in tests should follow these patterns:
 
 ```python
 # Core modules from src/
-from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+from src.client import AirzoneClient
+from src.system import AirzoneSystem
+from src.zone import AirzoneZone
 from src.airzone_cache import AirzoneCache
 from src.airzone_backup import AirzoneBackup
 

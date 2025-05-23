@@ -14,18 +14,23 @@ A streamlined Python toolkit for backing up, monitoring, and controlling Airzone
 
 ## Project Structure
 
-The project is organized with a clean directory structure:
+The project is organized with a clean, modular structure:
 
 ```
 myairzone/
-├── src/                     # Core source code
-│   ├── airzone_client.py    # Main API client
+├── src/                     # Core source code (modular design)
+│   ├── client.py            # API client for HTTP requests
+│   ├── system.py            # AirzoneSystem class
+│   ├── zone.py              # AirzoneZone class
+│   ├── iaq_sensor.py        # AirzoneIAQSensor class
+│   ├── models.py            # Shared constants and data structures
 │   ├── airzone_cache.py     # Caching system
 │   ├── airzone_backup.py    # Backup/restore functionality
 │   ├── airzone_errors.py    # Error handling
 │   └── __init__.py          # Package initialization
 ├── cli/                     # Command-line interface
-│   └── airzone_cli.py       # Unified CLI
+│   ├── airzone_cli.py       # Streamlined CLI with subcommands
+│   └── utils.py             # CLI utilities and decorators
 ├── scripts/                 # Utility scripts
 │   ├── check_errors.py      # Error checking
 │   ├── check_system.py      # System validation
@@ -314,7 +319,9 @@ For persistent issues, a physical restart of the Airzone hardware is required.
 For custom applications, you can use the client library directly:
 
 ```python
-from src.airzone_client import AirzoneClient
+from src.client import AirzoneClient
+from src.system import AirzoneSystem
+from src.zone import AirzoneZone
 from src.airzone_backup import AirzoneBackup
 
 # Create client
@@ -331,7 +338,6 @@ print(f"Backup created: {backup_file}")
 systems_data = client.get_all_systems()
 
 # Control a zone
-from src.airzone_client import AirzoneSystem
 system = AirzoneSystem(client, system_id=1)
 zone = system.get_zone(zone_id=1)
 zone.setpoint = 22.5  # Set temperature

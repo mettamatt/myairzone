@@ -17,7 +17,9 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+from src.client import AirzoneClient
+from src.system import AirzoneSystem
+from src.zone import AirzoneZone
 from src.airzone_cache import AirzoneCache
 from cli.airzone_cli import control_zone, get_zone_status
 

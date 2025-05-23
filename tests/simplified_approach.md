@@ -131,7 +131,7 @@ def temp_dir():
 @pytest.fixture
 def test_client():
     """Create a test client."""
-    from src.airzone_client import AirzoneClient
+    from src.client import AirzoneClient
     return AirzoneClient(use_cache=False)
 ```
 
