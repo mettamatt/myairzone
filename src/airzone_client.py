@@ -360,7 +360,12 @@ class AirzoneSystem:
             try:
                 zone_data = self.client.get_zone(self.system_id, zone_id, force_refresh=force_refresh)
                 if isinstance(zone_data, dict) and "data" in zone_data:
-                    self.zones[zone_id] = AirzoneZone(self.client, self.system_id, zone_id, zone_data["data"])
+                    # API returns data as a list with one zone, so get the first item
+                    zone_list = zone_data["data"]
+                    if isinstance(zone_list, list) and len(zone_list) > 0:
+                        self.zones[zone_id] = AirzoneZone(self.client, self.system_id, zone_id, zone_list[0])
+                    else:
+                        self.zones[zone_id] = AirzoneZone(self.client, self.system_id, zone_id, zone_list)
             except Exception:
                 # If that fails, load all zones
                 self.load_zones(force_refresh=force_refresh)
@@ -393,7 +398,12 @@ class AirzoneZone:
         """
         response = self.client.get_zone(self.system_id, self.zone_id, force_refresh=force_refresh)
         if isinstance(response, dict) and "data" in response:
-            self._data = response["data"]
+            # API returns data as a list with one zone, so get the first item
+            zone_list = response["data"]
+            if isinstance(zone_list, list) and len(zone_list) > 0:
+                self._data = zone_list[0]
+            else:
+                self._data = zone_list
         else:
             self._data = response
     
