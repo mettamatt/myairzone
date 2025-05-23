@@ -1,5 +1,7 @@
 # Simplified Testing Approach for AirZone
 
+> **Note**: This document has been updated to reflect the new project structure with `src/`, `cli/`, and `scripts/` directories. The original `control_airzone.py` has been consolidated into `cli/airzone_cli.py`.
+
 ## Core Principles
 
 1. Test behaviors, not implementations
@@ -70,8 +72,8 @@ def test_list_systems_workflow():
     # Capture stdout
     with patch('sys.stdout', new=StringIO()) as fake_out:
         # Run CLI command
-        with patch('sys.argv', ['control_airzone.py', 'list']):
-            from control_airzone import main
+        with patch('sys.argv', ['airzone_cli.py', 'list']):
+            from cli.airzone_cli import main
             main()
         
         # Check output for expected content
@@ -129,7 +131,7 @@ def temp_dir():
 @pytest.fixture
 def test_client():
     """Create a test client."""
-    from airzone_client import AirzoneClient
+    from src.airzone_client import AirzoneClient
     return AirzoneClient(use_cache=False)
 ```
 
