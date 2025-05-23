@@ -23,9 +23,28 @@ logging.basicConfig(
 
 logger = logging.getLogger("airzone_cli")
 
+# Load environment variables
+def load_env_vars():
+    """Load environment variables from .env file."""
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    env_vars = {}
+    
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip()
+    
+    return env_vars
+
+# Load environment variables
+env_vars = load_env_vars()
+
 # Default connection values
-DEFAULT_HOST = "192.168.1.100"
-DEFAULT_PORT = 3000
+DEFAULT_HOST = env_vars.get("AIRZONE_IP", "192.168.1.100")
+DEFAULT_PORT = int(env_vars.get("AIRZONE_PORT", "3000"))
 
 def list_systems(client, force_refresh=False, json_output=False):
     """List all systems and zones."""
