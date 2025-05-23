@@ -4,6 +4,10 @@ import os
 import time
 import logging
 from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from datetime import datetime
 
 from .airzone_client import AirzoneClient
@@ -217,8 +221,8 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Backup and restore Airzone configurations")
-    parser.add_argument("--host", default="192.168.1.100", help="Airzone device IP address")
-    parser.add_argument("--port", type=int, default=3000, help="Airzone API port")
+    parser.add_argument("--host", default=os.getenv("AIRZONE_IP", "192.168.1.100"), help="Airzone device IP address")
+    parser.add_argument("--port", type=int, default=int(os.getenv("AIRZONE_PORT", "3000")), help="Airzone API port")
     
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
     

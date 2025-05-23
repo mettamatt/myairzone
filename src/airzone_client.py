@@ -4,6 +4,10 @@ import json
 import logging
 import os
 from typing import Dict, Any, List, Optional, Union
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Try to import the cache, but don't fail if it doesn't exist
 try:
@@ -15,18 +19,18 @@ except ImportError:
 class AirzoneClient:
     """Client for interacting with Airzone HVAC systems."""
     
-    def __init__(self, host: str = "192.168.1.100", port: int = 3000, use_cache: bool = True, cache_max_age: int = 300):
+    def __init__(self, host: str = None, port: int = None, use_cache: bool = True, cache_max_age: int = 300):
         """Initialize Airzone client.
         
         Args:
-            host: Airzone host IP address
-            port: Airzone API port
+            host: Airzone host IP address (defaults to AIRZONE_IP from .env)
+            port: Airzone API port (defaults to AIRZONE_PORT from .env)
             use_cache: Whether to use caching (defaults to True)
             cache_max_age: Maximum age of cached data in seconds (defaults to 5 minutes)
         """
-        self.host = host
-        self.port = port
-        self.base_url = f"http://{host}:{port}/api/v1"
+        self.host = host or os.getenv("AIRZONE_IP", "192.168.1.100")
+        self.port = port or int(os.getenv("AIRZONE_PORT", "3000"))
+        self.base_url = f"http://{self.host}:{self.port}/api/v1"
         self.logger = logging.getLogger("airzone_client")
         
         # Initialize cache if available and enabled
