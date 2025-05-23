@@ -29,16 +29,19 @@ ENV/
 .python-venv/
 
 # Logs
-logs/
+logs/*.log
+logs/*.json
 *.log
 
 # Backup files
-backups/
+backups/*.json
+backups/*.bak
 *.bak
 
 # Cache
 .cache/
 .pytest_cache/
+~/.airzone_cache/
 
 # Coverage reports
 .coverage
@@ -51,5 +54,9 @@ htmlcov/
 *.swp
 *.swo
 
-# Project-specific
+# macOS
+.DS_Store
+
+# Project-specific - Configuration files with sensitive data
+config/airzone_config.json
 airzone_config_backup.json
