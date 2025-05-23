@@ -246,6 +246,59 @@ class AirzoneClient:
         """
         return self._make_api_call("hvac", {"systemID": system_id, "zoneID": zone_id}, force_refresh=force_refresh)
     
+    def get_demo_data(self) -> Dict:
+        """Get demo zone data for validation reference.
+        
+        Returns:
+            Demo zone data with all possible parameters and their valid ranges
+        """
+        return self._make_api_call("demo")
+    
+    def get_validation_reference(self) -> Dict[str, Any]:
+        """Get validation reference data from demo endpoint.
+        
+        Returns:
+            Dictionary with validation information for all possible parameters
+        """
+        try:
+            demo_data = self.get_demo_data()
+            if "data" in demo_data and len(demo_data["data"]) > 0:
+                zone_data = demo_data["data"][0]
+                return {
+                    "modes": zone_data.get("modes", []),
+                    "speed_values": zone_data.get("speed_values", []),
+                    "max_speeds": zone_data.get("speeds"),
+                    "temp_range": {
+                        "min": zone_data.get("minTemp"),
+                        "max": zone_data.get("maxTemp"),
+                        "step": zone_data.get("temp_step")
+                    },
+                    "cool_range": {
+                        "min": zone_data.get("coolmintemp"),
+                        "max": zone_data.get("coolmaxtemp")
+                    },
+                    "heat_range": {
+                        "min": zone_data.get("heatmintemp"),
+                        "max": zone_data.get("heatmaxtemp")
+                    },
+                    "sleep_range": {
+                        "min": 0,
+                        "max": 1440,
+                        "description": "0-24 hours in minutes"
+                    },
+                    "example_values": {
+                        "slats_vertical": zone_data.get("slats_vertical"),
+                        "slats_horizontal": zone_data.get("slats_horizontal"),
+                        "speed": zone_data.get("speed"),
+                        "mode": zone_data.get("mode"),
+                        "setpoint": zone_data.get("setpoint")
+                    }
+                }
+        except Exception as e:
+            self.logger.warning(f"Could not get validation reference data: {e}")
+            
+        return {}
+    
     def set_zone_parameters(self, system_id: int, zone_id: int, parameters: Dict[str, Any]) -> Dict:
         """Set parameters for a specific zone.
         
@@ -478,7 +531,24 @@ class AirzoneZone:
         
         Args:
             value: Temperature setpoint
+            
+        Raises:
+            ValueError: If setpoint is outside valid range
         """
+        if not self.validate_setpoint(value):
+            validation_info = self.get_validation_info()
+            current_mode = self.mode
+            if current_mode == 2:  # Cooling
+                temp_range = validation_info["cool_range"]
+            elif current_mode == 3:  # Heating
+                temp_range = validation_info["heat_range"]
+            else:
+                temp_range = validation_info["temp_range"]
+            
+            range_str = f"{temp_range['min']}-{temp_range['max']}°C"
+            step_str = f" (step: {temp_range.get('step')}°C)" if temp_range.get('step') else ""
+            raise ValueError(f"Setpoint {value}°C is invalid. Valid range: {range_str}{step_str}")
+            
         self.client.set_zone_parameters(self.system_id, self.zone_id, {"setpoint": value})
         self.refresh(force_refresh=True)
         # Update the internal data directly as well to ensure it's available immediately
@@ -511,7 +581,16 @@ class AirzoneZone:
         
         Args:
             value: Mode ID (1: stop, 2: cooling, 3: heating, 4: ventilation, 5: dehumidify)
+            
+        Raises:
+            ValueError: If mode is not supported by this zone
         """
+        if not self.validate_mode(value):
+            available_modes = self._data.get("modes", [])
+            mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
+            available_names = [f"{m}({mode_names.get(m, 'Unknown')})" for m in available_modes]
+            raise ValueError(f"Mode {value} not supported. Available modes: {available_names}")
+            
         self.client.set_zone_parameters(self.system_id, self.zone_id, {"mode": value})
         self.refresh(force_refresh=True)
     
@@ -531,9 +610,12 @@ class AirzoneZone:
         
         Args:
             minutes: Sleep timer in minutes (0 to disable)
+            
+        Raises:
+            ValueError: If sleep timer value is invalid
         """
-        if minutes < 0:
-            raise ValueError("Sleep timer cannot be negative")
+        if not self.validate_sleep_timer(minutes):
+            raise ValueError(f"Sleep timer {minutes} minutes is invalid. Valid range: 0-1440 minutes (0-24 hours)")
         self.client.set_zone_parameters(self.system_id, self.zone_id, {"sleep": minutes})
         self.refresh(force_refresh=True)
         self._data["sleep"] = minutes
@@ -558,9 +640,15 @@ class AirzoneZone:
         Raises:
             ValueError: If speed is not in available speeds
         """
-        available_speeds = self.available_fan_speeds
-        if available_speeds and speed not in available_speeds:
-            raise ValueError(f"Fan speed {speed} not available. Available speeds: {available_speeds}")
+        if not self.validate_fan_speed(speed):
+            available_speeds = self.available_fan_speeds
+            max_speeds = self._data.get("speeds")
+            if available_speeds:
+                raise ValueError(f"Fan speed {speed} not available. Available speeds: {available_speeds}")
+            elif max_speeds is not None:
+                raise ValueError(f"Fan speed {speed} invalid. Valid range: 0-{max_speeds}")
+            else:
+                raise ValueError(f"Fan speed {speed} invalid. No validation data available.")
         self.client.set_zone_parameters(self.system_id, self.zone_id, {"speed": speed})
         self.refresh(force_refresh=True)
         self._data["speed"] = speed
@@ -630,6 +718,116 @@ class AirzoneZone:
         self.client.set_zone_parameters(self.system_id, self.zone_id, {"slats_hswing": value})
         self.refresh(force_refresh=True)
         self._data["slats_hswing"] = value
+    
+    # Validation methods
+    def validate_mode(self, mode: int) -> bool:
+        """Validate if mode is supported by this zone.
+        
+        Args:
+            mode: Mode ID to validate
+            
+        Returns:
+            True if mode is supported, False otherwise
+        """
+        available_modes = self._data.get("modes", [])
+        return mode in available_modes if available_modes else True
+    
+    def validate_fan_speed(self, speed: int) -> bool:
+        """Validate if fan speed is supported by this zone.
+        
+        Args:
+            speed: Fan speed to validate
+            
+        Returns:
+            True if speed is supported, False otherwise
+        """
+        available_speeds = self._data.get("speed_values", [])
+        if available_speeds:
+            return speed in available_speeds
+        # If no speed_values, check against max speeds
+        max_speeds = self._data.get("speeds")
+        if max_speeds is not None:
+            return 0 <= speed <= max_speeds
+        return True  # No validation data available
+    
+    def validate_setpoint(self, setpoint: float, mode: Optional[int] = None) -> bool:
+        """Validate if temperature setpoint is within allowed range.
+        
+        Args:
+            setpoint: Temperature setpoint to validate
+            mode: Optional mode to check mode-specific limits
+            
+        Returns:
+            True if setpoint is valid, False otherwise
+        """
+        current_mode = mode or self.mode
+        
+        # Check mode-specific limits first
+        if current_mode == 2:  # Cooling mode
+            min_temp = self._data.get("coolmintemp")
+            max_temp = self._data.get("coolmaxtemp")
+        elif current_mode == 3:  # Heating mode
+            min_temp = self._data.get("heatmintemp")
+            max_temp = self._data.get("heatmaxtemp")
+        else:
+            # For other modes, use general limits
+            min_temp = self._data.get("minTemp")
+            max_temp = self._data.get("maxTemp")
+        
+        if min_temp is not None and setpoint < min_temp:
+            return False
+        if max_temp is not None and setpoint > max_temp:
+            return False
+            
+        # Check temperature step if available
+        temp_step = self._data.get("temp_step")
+        if temp_step and temp_step > 0:
+            # Check if setpoint aligns with temperature step
+            min_temp_check = min_temp or 0
+            return abs((setpoint - min_temp_check) % temp_step) < 0.01
+            
+        return True
+    
+    def validate_sleep_timer(self, minutes: int) -> bool:
+        """Validate sleep timer value.
+        
+        Args:
+            minutes: Sleep timer in minutes
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        # Basic validation - non-negative and reasonable upper limit
+        return 0 <= minutes <= 1440  # 0 to 24 hours
+    
+    def get_validation_info(self) -> Dict[str, Any]:
+        """Get validation information for this zone.
+        
+        Returns:
+            Dictionary containing validation limits and available values
+        """
+        return {
+            "modes": self._data.get("modes", []),
+            "speed_values": self._data.get("speed_values", []),
+            "max_speeds": self._data.get("speeds"),
+            "temp_range": {
+                "min": self._data.get("minTemp"),
+                "max": self._data.get("maxTemp"),
+                "step": self._data.get("temp_step")
+            },
+            "cool_range": {
+                "min": self._data.get("coolmintemp"),
+                "max": self._data.get("coolmaxtemp")
+            },
+            "heat_range": {
+                "min": self._data.get("heatmintemp"),
+                "max": self._data.get("heatmaxtemp")
+            },
+            "angle_values": {
+                "heat": self._data.get("heat_angle_values", []),
+                "cool": self._data.get("cold_angle_values", [])
+            }
+        }
     
     @property
     def errors(self) -> List[Dict]:

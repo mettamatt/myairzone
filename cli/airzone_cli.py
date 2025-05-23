@@ -359,6 +359,75 @@ def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=Non
     except Exception as e:
         print(f"Error controlling zone: {str(e)}")
 
+def show_zone_validation(client, system_id, zone_id):
+    """Show validation information for a specific zone.
+    
+    Args:
+        client: AirzoneClient instance
+        system_id: System ID
+        zone_id: Zone ID
+    """
+    try:
+        # Get system
+        system = AirzoneSystem(client, system_id)
+        
+        # Get zone
+        zone = system.get_zone(zone_id)
+        
+        if zone is None:
+            print(f"Zone {zone_id} not found in System {system_id}")
+            return
+        
+        print(f"\n=== Validation Info for {zone.name} (System {system_id}, Zone {zone_id}) ===")
+        
+        validation_info = zone.get_validation_info()
+        
+        # Mode validation
+        modes = validation_info["modes"]
+        if modes:
+            mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
+            mode_list = [f"{m}({mode_names.get(m, 'Unknown')})" for m in modes]
+            print(f"Valid Modes: {', '.join(mode_list)}")
+        else:
+            print("Valid Modes: No restrictions")
+        
+        # Temperature validation
+        temp_range = validation_info["temp_range"]
+        if temp_range["min"] is not None and temp_range["max"] is not None:
+            step_str = f", step: {temp_range['step']}°C" if temp_range.get("step") else ""
+            print(f"Temperature Range: {temp_range['min']}-{temp_range['max']}°C{step_str}")
+        
+        # Mode-specific temperature ranges
+        heat_range = validation_info["heat_range"]
+        cool_range = validation_info["cool_range"]
+        if heat_range["min"] is not None:
+            print(f"Heating Mode Range: {heat_range['min']}-{heat_range['max']}°C")
+        if cool_range["min"] is not None:
+            print(f"Cooling Mode Range: {cool_range['min']}-{cool_range['max']}°C")
+        
+        # Fan speed validation
+        speed_values = validation_info["speed_values"]
+        max_speeds = validation_info["max_speeds"]
+        if speed_values:
+            print(f"Valid Fan Speeds: {speed_values}")
+        elif max_speeds is not None:
+            print(f"Fan Speed Range: 0-{max_speeds}")
+        else:
+            print("Fan Speed: Not supported or no restrictions")
+        
+        # Sleep timer
+        print("Sleep Timer: 0-1440 minutes (0-24 hours)")
+        
+        # Additional info
+        angle_values = validation_info["angle_values"]
+        if angle_values["heat"]:
+            print(f"Heat Angle Values: {angle_values['heat']}")
+        if angle_values["cool"]:
+            print(f"Cool Angle Values: {angle_values['cool']}")
+            
+    except Exception as e:
+        print(f"Error getting validation info: {str(e)}")
+
 def main():
     """Main CLI function."""
     parser = argparse.ArgumentParser(description="Airzone HVAC Control System")
@@ -383,6 +452,11 @@ def main():
     check_parser.add_argument("--brief", action="store_true", help="Show brief status with errors highlighted")
     
     errors_parser = subparsers.add_parser("errors", help="Check for errors in all systems")
+    
+    # Validate command
+    validate_parser = subparsers.add_parser("validate", help="Show validation info for a zone")
+    validate_parser.add_argument("--system", type=int, required=True, help="System ID")
+    validate_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
     
     # Control command
     control_parser = subparsers.add_parser("control", help="Control a specific zone")
@@ -442,6 +516,9 @@ def main():
             
         elif args.command == "errors":
             check_system_errors()
+            
+        elif args.command == "validate":
+            show_zone_validation(client, args.system, args.zone)
             
         elif args.command == "control":
             control_zone(client, args.system, args.zone, args.power, args.setpoint, args.mode,
