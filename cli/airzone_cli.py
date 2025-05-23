@@ -1,26 +1,36 @@
 #!/usr/bin/env python3
+"""Streamlined Airzone CLI with reduced duplication."""
+
 import argparse
 import sys
 import os
+import json
+import time
 import logging
 from datetime import datetime
+from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone, AirzoneIAQSensor
+from src.client import AirzoneClient
+from src.system import AirzoneSystem
+from src.zone import AirzoneZone
+from src.iaq_sensor import AirzoneIAQSensor
 from src.airzone_backup import AirzoneBackup
 from src.airzone_errors import print_error_details
 
 from scripts.check_system import check_systems
 from scripts.check_errors import check_system_errors
 
+# Import our utilities
+from utils import handle_cli_errors, print_json_or_text, format_entity_info, create_client
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-
 logger = logging.getLogger("airzone_cli")
 
 # Load environment variables
@@ -46,46 +56,48 @@ env_vars = load_env_vars()
 DEFAULT_HOST = env_vars.get("AIRZONE_IP", "192.168.1.100")
 DEFAULT_PORT = int(env_vars.get("AIRZONE_PORT", "3000"))
 
-def list_systems(client, force_refresh=False, json_output=False):
+
+@handle_cli_errors
+def list_systems(client: AirzoneClient, force_refresh: bool = False, json_output: bool = False):
     """List all systems and zones."""
     # Show connection status
     print(f"\n--- Connection Status ---")
     print(f"Host: {client.host}:{client.port}")
     
-    try:
-        # Test connectivity with version call
-        import time
-        start_time = time.time()
-        version_data = client.get_version()
-        response_time = time.time() - start_time
-        print(f"Status: Connected (response time: {response_time:.2f}s)")
-        
-        # Get webserver info for WiFi details
-        webserver_info = client.get_webserver_info()
-        if webserver_info:
-            interface = webserver_info.get('interface', 'unknown')
-            print(f"Interface: {interface}")
-            
-            if interface == 'wifi':
-                wifi_rssi = webserver_info.get('wifi_rssi')
-                wifi_quality = webserver_info.get('wifi_quality')
-                wifi_channel = webserver_info.get('wifi_channel')
-                
-                if wifi_rssi is not None:
-                    wifi_info = f"{wifi_rssi} dBm"
-                    if wifi_quality and wifi_quality > 0:
-                        wifi_info += f" ({wifi_quality}%)"
-                    if wifi_channel and wifi_channel > 0:
-                        wifi_info += f" Ch{wifi_channel}"
-                    print(f"WiFi: {wifi_info}")
-                    
-        if 'webserver' in version_data:
-            print(f"Device: {version_data['webserver'].get('alias', 'Unknown')}")
-    except Exception as e:
-        print(f"Status: Connection failed - {str(e)}")
-        return
+    # Test connectivity
+    start_time = time.time()
+    version_data = client.get_version()
+    response_time = time.time() - start_time
+    print(f"Status: Connected (response time: {response_time:.2f}s)")
     
+    # Get webserver info
+    webserver_info = client.get_webserver_info()
+    if webserver_info:
+        interface = webserver_info.get('interface', 'unknown')
+        print(f"Interface: {interface}")
+        
+        if interface == 'wifi':
+            wifi_rssi = webserver_info.get('wifi_rssi')
+            wifi_quality = webserver_info.get('wifi_quality')
+            wifi_channel = webserver_info.get('wifi_channel')
+            
+            if wifi_rssi is not None:
+                wifi_info = f"{wifi_rssi} dBm"
+                if wifi_quality and wifi_quality > 0:
+                    wifi_info += f" ({wifi_quality}%)"
+                if wifi_channel and wifi_channel > 0:
+                    wifi_info += f" Ch{wifi_channel}"
+                print(f"WiFi: {wifi_info}")
+    
+    if 'webserver' in version_data:
+        print(f"Device: {version_data['webserver'].get('alias', 'Unknown')}")
+    
+    # Get all systems
     systems_data = client.get_all_systems(force_refresh=force_refresh)
+    
+    if json_output:
+        print_json_or_text(systems_data, as_json=True)
+        return
     
     if "systems" not in systems_data:
         print("No systems found")
@@ -95,648 +107,379 @@ def list_systems(client, force_refresh=False, json_output=False):
     
     for system_data in systems_data["systems"]:
         system_id = system_data.get("systemID")
-        if system_id is not None:
-            system = AirzoneSystem(client, system_id, system_data)
+        if system_id is None:
+            continue
             
-            print(f"\nSystem {system_id}")
-            print(f"  Manufacturer: {system.manufacturer}")
-            print(f"  Firmware: {system.firmware}")
-            
-            # Available modes
-            modes = system_data.get("modes", [])
-            if modes:
-                mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
-                available_modes = [mode_names.get(m, f"Mode {m}") for m in modes]
-                print(f"  Available Modes: {', '.join(available_modes)}")
-            
-            # Fan speed - check both system and individual zones since it varies
-            speed = system_data.get("speed", None)
-            speeds = system_data.get("speeds", None)
-            if speed is not None:
-                print(f"  Fan Speed: {speed}")
-            if speeds is not None:
-                print(f"  Max Fan Speed: {speeds}")
-            
-            if system.has_errors:
-                print(f"  Errors: {system.errors}")
-            
-            # Load zones for this system
-            system.load_zones(force_refresh=force_refresh)
-            
-            if not system.all_zones:
-                print("  No zones found")
-                continue
-            
-            for zone_id, zone in system.all_zones.items():
-                print(f"  Zone {zone_id}: {zone.name}")
-                print(f"    Mode: {zone.mode_name}")
-                print(f"    Temperature: {zone.temperature}°C")
-                print(f"    Setpoint: {zone.setpoint}°C")
-                print(f"    Humidity: {zone.humidity}%")
-                print(f"    State: {'On' if zone.is_on else 'Off'}")
-                
-                # Battery and signal info
-                battery = zone._data.get("battery", None)
-                if battery is not None:
-                    print(f"    Battery: {battery}%")
-                
-                
-                thermos_radio = zone._data.get("thermos_radio", None)
-                if thermos_radio is not None:
-                    radio_status = "Wireless" if thermos_radio == 1 else "Wired"
-                    print(f"    Connection: {radio_status}")
-                
-                # Zone-specific fan speed
-                zone_speed = zone._data.get("speed", None)
-                zone_speeds = zone._data.get("speeds", None)
-                speed_values = zone._data.get("speed_values", None)
-                if zone_speed is not None:
-                    speed_info = f"{zone_speed}"
-                    if zone_speeds is not None:
-                        speed_info += f"/{zone_speeds}"
-                    if speed_values:
-                        speed_info += f" (available: {speed_values})"
-                    print(f"    Fan Speed: {speed_info}")
-                
-                # Demand status
-                demands = []
-                if zone._data.get("air_demand", 0) == 1:
-                    demands.append("Air")
-                if zone._data.get("cold_demand", 0) == 1:
-                    demands.append("Cooling")
-                if zone._data.get("heat_demand", 0) == 1:
-                    demands.append("Heating")
-                if zone._data.get("floor_demand", 0) == 1:
-                    demands.append("Floor")
-                if demands:
-                    print(f"    Active Demands: {', '.join(demands)}")
-                
-                # Damper/slat positions
-                slats_info = []
-                slats_v = zone._data.get("slats_vertical", None)
-                slats_h = zone._data.get("slats_horizontal", None)
-                if slats_v is not None:
-                    slats_info.append(f"V:{slats_v}")
-                if slats_h is not None:
-                    slats_info.append(f"H:{slats_h}")
-                if slats_info:
-                    print(f"    Dampers: {', '.join(slats_info)}")
-                
-                # Swing settings
-                swing_info = []
-                vswing = zone._data.get("slats_vswing", None)
-                hswing = zone._data.get("slats_hswing", None)
-                if vswing is not None:
-                    swing_info.append(f"V:{'On' if vswing == 1 else 'Off'}")
-                if hswing is not None:
-                    swing_info.append(f"H:{'On' if hswing == 1 else 'Off'}")
-                if swing_info:
-                    print(f"    Swing: {', '.join(swing_info)}")
-                
-                if zone.has_errors:
-                    print(f"    Errors: {zone.errors}")
+        system = AirzoneSystem(client, system_id, system_data)
+        system.load_zones(force_refresh)
+        
+        print(f"\n{system.name}")
+        print(f"  System ID: {system.system_id}")
+        print(f"  Manufacturer: {system.manufacturer}")
+        print(f"  Firmware: {system.firmware}")
+        
+        if system.has_errors:
+            print(f"  Errors: {system.errors}")
+            for error in system.errors:
+                error_code = error.get("error", {}).get("code", "Unknown")
+                print_error_details(error_code, indent="    ")
+        
+        # Show zones
+        for zone in system.all_zones.values():
+            print(format_entity_info(zone, "Zone"))
 
-def get_zone_status(client, system_id, zone_id, json_output=False, force_refresh=False):
+
+@handle_cli_errors
+def get_zone_status(client: AirzoneClient, system_id: int, zone_id: int, 
+                   json_output: bool = False, force_refresh: bool = False):
     """Get status of a specific zone."""
-    try:
-        # Get system
-        system = AirzoneSystem(client, system_id)
-        
-        # Get zone
-        zone = system.get_zone(zone_id, force_refresh=force_refresh)
-        
-        if zone is None:
-            print(f"Zone {zone_id} not found in System {system_id}")
-            return
-        
-        # Print zone status
-        cache_status = "(cached)" if not force_refresh and client.use_cache else "(live)"
-        print(f"\nZone status: {zone.name} (System {system_id}, Zone {zone_id}) {cache_status}")
-        print(f"  Power: {'On' if zone.is_on else 'Off'}")
-        print(f"  Temperature: {zone.temperature}°C")
-        print(f"  Setpoint: {zone.setpoint}°C")
-        print(f"  Mode: {zone.mode_name} ({zone.mode})")
-        print(f"  Humidity: {zone.humidity}%")
-        
-        if zone.has_errors:
-            print(f"  Errors: {zone.errors}")
-            
-    except Exception as e:
-        print(f"Error getting zone status: {str(e)}")
+    zone_data = client.get_zone(system_id, zone_id, force_refresh)
+    
+    if json_output:
+        print_json_or_text(zone_data, as_json=True)
+        return
+    
+    if "data" not in zone_data or not zone_data["data"]:
+        print(f"Zone {zone_id} not found in system {system_id}")
+        return
+    
+    zone = AirzoneZone(client, system_id, zone_id, zone_data["data"][0])
+    print(format_entity_info(zone, "Zone"))
+    
+    if zone._data.get("errors"):
+        print(f"  Errors: {zone._data['errors']}")
 
-def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=None, 
-                 sleep=None, fan_speed=None, slats_vertical=None, slats_horizontal=None,
-                 vertical_swing=None, horizontal_swing=None):
-    """Control a specific zone.
+
+@handle_cli_errors
+def control_zone(client: AirzoneClient, system_id: int, zone_id: int, **params):
+    """Control a specific zone with various parameters.
     
     Args:
         client: AirzoneClient instance
         system_id: System ID
         zone_id: Zone ID
-        power: 'on' or 'off'
-        setpoint: Temperature setpoint
-        mode: Mode ID (1: stop, 2: cooling, 3: heating, 4: ventilation, 5: dehumidify)
-        sleep: Sleep timer in minutes
-        fan_speed: Fan speed value
-        slats_vertical: Vertical slat position
-        slats_horizontal: Horizontal slat position
-        vertical_swing: 'on' or 'off' for vertical swing
-        horizontal_swing: 'on' or 'off' for horizontal swing
+        **params: Control parameters (power, setpoint, mode, etc.)
     """
-    try:
-        # Get system
-        system = AirzoneSystem(client, system_id)
-        
-        # Get zone
-        zone = system.get_zone(zone_id)
-        
-        if zone is None:
-            print(f"Zone {zone_id} not found in System {system_id}")
-            return
-        
-        print(f"Controlling zone: {zone.name} (System {system_id}, Zone {zone_id})")
-        print(f"Initial state: Temperature {zone.temperature}°C, Setpoint {zone.setpoint}°C, Mode {zone.mode_name}, Power {'On' if zone.is_on else 'Off'}")
-        
-        # Save initial values for change reporting
-        initial_setpoint = zone.setpoint
-        initial_mode = zone.mode
-        initial_power = zone.is_on
-        
-        # Apply changes
-        changes_applied = False
-        
-        if power is not None:
-            if power.lower() == "on" and not zone.is_on:
-                zone.turn_on()
-                changes_applied = True
-                print(f"Power: Off -> On")
-            elif power.lower() == "off" and zone.is_on:
-                zone.turn_off()
-                changes_applied = True
-                print(f"Power: On -> Off")
-        
-        if setpoint is not None and float(setpoint) != float(initial_setpoint):
-            old_setpoint = initial_setpoint
-            zone.setpoint = float(setpoint)
-            changes_applied = True
-            print(f"Setpoint: {old_setpoint}°C -> {setpoint}°C")
-        
-        if mode is not None and mode != initial_mode:
-            mode_names = {
-                1: "Stop",
-                2: "Cooling", 
-                3: "Heating",
-                4: "Ventilation",
-                5: "Dehumidify"
-            }
-            old_mode = initial_mode
-            old_mode_name = mode_names.get(old_mode, f'Unknown ({old_mode})')
-            zone.mode = mode
-            changes_applied = True
-            print(f"Mode: {old_mode_name} -> {mode_names.get(mode, f'Unknown ({mode})')}")
-        
-        # Sleep timer
-        if sleep is not None:
-            old_sleep = zone.sleep_timer
-            if sleep != old_sleep:
-                zone.sleep_timer = sleep
-                changes_applied = True
-                if sleep == 0:
-                    print(f"Sleep: {old_sleep}min -> Disabled")
-                else:
-                    print(f"Sleep: {old_sleep}min -> {sleep}min")
-        
-        # Fan speed
-        if fan_speed is not None:
+    # Get zone
+    system = AirzoneSystem(client, system_id)
+    zone = system.get_zone(zone_id)
+    
+    if zone is None:
+        print(f"Zone {zone_id} not found in System {system_id}")
+        return
+    
+    print(f"Controlling zone: {zone.name} (System {system_id}, Zone {zone_id})")
+    print(f"Initial state: {zone.room_temp}°C, Setpoint {zone.setpoint}°C, "
+          f"Mode {zone.mode_name}, Power {'On' if zone.is_on else 'Off'}")
+    
+    # Track changes
+    changes = []
+    
+    # Power control
+    if params.get('power'):
+        power_on = params['power'].lower() == 'on'
+        if power_on != zone.is_on:
+            zone.on = power_on
+            changes.append(f"Power: {'Off -> On' if power_on else 'On -> Off'}")
+    
+    # Temperature setpoint
+    if params.get('setpoint') is not None:
+        if params['setpoint'] != zone.setpoint:
+            old_setpoint = zone.setpoint
+            zone.setpoint = params['setpoint']
+            changes.append(f"Setpoint: {old_setpoint}°C -> {params['setpoint']}°C")
+    
+    # Mode
+    if params.get('mode') is not None:
+        if params['mode'] != zone.mode:
+            old_mode = zone.mode_name
+            zone.mode = params['mode']
+            changes.append(f"Mode: {old_mode} -> {zone.mode_name}")
+    
+    # Fan speed
+    if params.get('fan_speed') is not None:
+        if params['fan_speed'] != zone.fan_speed:
             old_speed = zone.fan_speed
-            if fan_speed != old_speed:
-                try:
-                    zone.fan_speed = fan_speed
-                    changes_applied = True
-                    print(f"Fan Speed: {old_speed} -> {fan_speed}")
-                except ValueError as e:
-                    print(f"Fan Speed Error: {e}")
-        
-        # Slat positions
-        if slats_vertical is not None:
-            old_slats = zone.slats_vertical
-            if slats_vertical != old_slats:
-                zone.slats_vertical = slats_vertical
-                changes_applied = True
-                print(f"Vertical Slats: {old_slats} -> {slats_vertical}")
-        
-        if slats_horizontal is not None:
-            old_slats = zone.slats_horizontal
-            if slats_horizontal != old_slats:
-                zone.slats_horizontal = slats_horizontal
-                changes_applied = True
-                print(f"Horizontal Slats: {old_slats} -> {slats_horizontal}")
-        
-        # Swing settings
-        if vertical_swing is not None:
-            old_swing = zone.vertical_swing
-            new_swing = vertical_swing.lower() == "on"
-            if new_swing != old_swing:
-                zone.vertical_swing = new_swing
-                changes_applied = True
-                print(f"Vertical Swing: {'On' if old_swing else 'Off'} -> {'On' if new_swing else 'Off'}")
-        
-        if horizontal_swing is not None:
-            old_swing = zone.horizontal_swing
-            new_swing = horizontal_swing.lower() == "on"
-            if new_swing != old_swing:
-                zone.horizontal_swing = new_swing
-                changes_applied = True
-                print(f"Horizontal Swing: {'On' if old_swing else 'Off'} -> {'On' if new_swing else 'Off'}")
-        
-        if not changes_applied:
-            print("No changes applied")
-        else:
-            # Refresh to get latest state
-            zone.refresh()
-            print(f"Final state: Temperature {zone.temperature}°C, Setpoint {zone.setpoint}°C, Mode {zone.mode_name}, Power {'On' if zone.is_on else 'Off'}")
-            
-    except Exception as e:
-        print(f"Error controlling zone: {str(e)}")
-
-def show_zone_validation(client, system_id, zone_id):
-    """Show validation information for a specific zone.
+            zone.fan_speed = params['fan_speed']
+            changes.append(f"Fan Speed: {old_speed} -> {params['fan_speed']}")
     
-    Args:
-        client: AirzoneClient instance
-        system_id: System ID
-        zone_id: Zone ID
-    """
-    try:
-        # Get system
-        system = AirzoneSystem(client, system_id)
+    # Sleep timer
+    if params.get('sleep') is not None:
+        if params['sleep'] != zone.sleep_timer:
+            old_sleep = zone.sleep_timer
+            zone.sleep_timer = params['sleep']
+            changes.append(f"Sleep Timer: {old_sleep} min -> {params['sleep']} min")
+    
+    # Report changes
+    if changes:
+        print("\nChanges applied:")
+        for change in changes:
+            print(f"  {change}")
         
-        # Get zone
-        zone = system.get_zone(zone_id)
-        
-        if zone is None:
-            print(f"Zone {zone_id} not found in System {system_id}")
-            return
-        
-        print(f"\n=== Validation Info for {zone.name} (System {system_id}, Zone {zone_id}) ===")
-        
-        validation_info = zone.get_validation_info()
-        
-        # Mode validation
-        modes = validation_info["modes"]
-        if modes:
-            mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
-            mode_list = [f"{m}({mode_names.get(m, 'Unknown')})" for m in modes]
-            print(f"Valid Modes: {', '.join(mode_list)}")
-        else:
-            print("Valid Modes: No restrictions")
-        
-        # Temperature validation
-        temp_range = validation_info["temp_range"]
-        if temp_range["min"] is not None and temp_range["max"] is not None:
-            step_str = f", step: {temp_range['step']}°C" if temp_range.get("step") else ""
-            print(f"Temperature Range: {temp_range['min']}-{temp_range['max']}°C{step_str}")
-        
-        # Mode-specific temperature ranges
-        heat_range = validation_info["heat_range"]
-        cool_range = validation_info["cool_range"]
-        if heat_range["min"] is not None:
-            print(f"Heating Mode Range: {heat_range['min']}-{heat_range['max']}°C")
-        if cool_range["min"] is not None:
-            print(f"Cooling Mode Range: {cool_range['min']}-{cool_range['max']}°C")
-        
-        # Fan speed validation
-        speed_values = validation_info["speed_values"]
-        max_speeds = validation_info["max_speeds"]
-        if speed_values:
-            print(f"Valid Fan Speeds: {speed_values}")
-        elif max_speeds is not None:
-            print(f"Fan Speed Range: 0-{max_speeds}")
-        else:
-            print("Fan Speed: Not supported or no restrictions")
-        
-        # Sleep timer
-        print("Sleep Timer: 0-1440 minutes (0-24 hours)")
-        
-        # Additional info
-        angle_values = validation_info["angle_values"]
-        if angle_values["heat"]:
-            print(f"Heat Angle Values: {angle_values['heat']}")
-        if angle_values["cool"]:
-            print(f"Cool Angle Values: {angle_values['cool']}")
-            
-    except Exception as e:
-        print(f"Error getting validation info: {str(e)}")
+        # Refresh and show final state
+        zone.refresh(force_refresh=True)
+        print(f"\nFinal state: {zone.room_temp}°C, Setpoint {zone.setpoint}°C, "
+              f"Mode {zone.mode_name}, Power {'On' if zone.is_on else 'Off'}")
+    else:
+        print("\nNo changes applied")
 
 
-def list_iaq_sensors(client, force_refresh=False):
+@handle_cli_errors
+def check_errors_command(client: AirzoneClient):
+    """Check for system errors."""
+    check_system_errors(client)
+
+
+@handle_cli_errors
+def check_system_command(client: AirzoneClient, json_output: bool = False):
+    """Check system configuration."""
+    check_systems(client, json_output)
+
+
+@handle_cli_errors
+def list_iaq_sensors(client: AirzoneClient, force_refresh: bool = False):
     """List all IAQ sensors."""
-    try:
-        print("Getting IAQ sensors...")
-        print("Note: IAQ sensors are only available on Flexa 3.6.6 devices")
+    sensors_data = client.get_all_iaq_sensors(force_refresh)
+    
+    if "data" not in sensors_data or not sensors_data["data"]:
+        print("No IAQ sensors found")
+        return
+    
+    print("\n--- IAQ Sensors ---")
+    for sensor_data in sensors_data["data"]:
+        system_id = sensor_data.get("systemID", 1)
+        sensor_id = sensor_data.get("id")
         
-        # Try to get IAQ sensors from system 1
-        sensors_data = client.get_all_iaq_sensors(force_refresh=force_refresh)
+        if sensor_id is None:
+            continue
         
-        if isinstance(sensors_data, dict) and "data" in sensors_data and sensors_data["data"]:
-            sensors = sensors_data["data"]
-            if isinstance(sensors, list) and len(sensors) > 0:
-                print(f"\nFound {len(sensors)} IAQ sensor(s):")
-                
-                for sensor_data in sensors:
-                    system_id = sensor_data.get("systemID", "Unknown")
-                    sensor_id = sensor_data.get("airqsensorID", "Unknown")
-                    name = sensor_data.get("name", f"IAQ Sensor {sensor_id}")
-                    
-                    sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data)
-                    
-                    print(f"\n  System {system_id}, Sensor {sensor_id}: {name}")
-                    print(f"    Air Quality: {sensor.iaq_index_name} (Score: {sensor.iaq_score}/100)")
-                    print(f"    CO2: {sensor.co2_level} ppm")
-                    print(f"    PM2.5: {sensor.pm25_level} μg/m³")
-                    print(f"    PM10: {sensor.pm10_level} μg/m³")
-                    print(f"    TVOC: {sensor.tvoc_level} ppb")
-                    print(f"    Pressure: {sensor.pressure} hPa")
-                    
-                    vent_mode = sensor.ventilation_mode
-                    if vent_mode is not None:
-                        mode_names = {0: "Off", 1: "On", 2: "Auto"}
-                        print(f"    Ventilation: {mode_names.get(vent_mode, 'Unknown')} ({vent_mode})")
-                    else:
-                        print(f"    Ventilation: Not available (VMC off)")
-            else:
-                print("No IAQ sensors found")
-        else:
-            print("No IAQ sensors found - device may not support IAQ sensors")
-            print("IAQ sensors require a Flexa 3.6.6 device")
-            
-    except Exception as e:
-        print(f"Error retrieving IAQ sensors: {str(e)}")
-        print("This is expected if the device doesn't support IAQ sensors (requires Flexa 3.6.6)")
+        sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data)
+        print(format_entity_info(sensor, "IAQ Sensor"))
 
 
-def get_iaq_sensor_status(client, system_id, sensor_id, force_refresh=False):
-    """Get detailed status of a specific IAQ sensor."""
-    try:
-        print(f"Getting IAQ sensor {sensor_id} status from system {system_id}...")
-        
-        sensor_data = client.get_iaq_sensor(system_id, sensor_id, force_refresh=force_refresh)
-        
-        if isinstance(sensor_data, dict) and "data" in sensor_data and sensor_data["data"]:
-            sensor_info = sensor_data["data"][0] if isinstance(sensor_data["data"], list) else sensor_data["data"]
-            sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_info)
-            
-            print(f"\nIAQ Sensor {sensor_id} (System {system_id}):")
-            print(f"  Name: {sensor.name}")
-            print(f"  Overall Air Quality: {sensor.iaq_index_name} (Index: {sensor.iaq_index}, Score: {sensor.iaq_score}/100)")
-            print(f"\n  Measurements:")
-            print(f"    CO2 Level: {sensor.co2_level} ppm")
-            print(f"    PM2.5 Level: {sensor.pm25_level} μg/m³")
-            print(f"    PM10 Level: {sensor.pm10_level} μg/m³")
-            print(f"    TVOC Level: {sensor.tvoc_level} ppb")
-            print(f"    Pressure: {sensor.pressure} hPa")
-            
-            vent_mode = sensor.ventilation_mode
-            if vent_mode is not None:
-                mode_names = {0: "Off", 1: "On", 2: "Auto"}
-                print(f"\n  Ventilation Mode: {mode_names.get(vent_mode, 'Unknown')} ({vent_mode})")
-                print(f"    Available modes: 0=Off, 1=On, 2=Auto")
-            else:
-                print(f"\n  Ventilation Mode: Not available (VMC off)")
-        else:
-            print(f"IAQ sensor {sensor_id} not found in system {system_id}")
-            
-    except Exception as e:
-        print(f"Error retrieving IAQ sensor status: {str(e)}")
+@handle_cli_errors
+def get_iaq_sensor_status(client: AirzoneClient, system_id: int, sensor_id: int, 
+                         force_refresh: bool = False):
+    """Get status of a specific IAQ sensor."""
+    sensor_data = client.get_iaq_sensor(system_id, sensor_id, force_refresh)
+    
+    if "data" not in sensor_data or not sensor_data["data"]:
+        print(f"IAQ sensor {sensor_id} not found in system {system_id}")
+        return
+    
+    sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data["data"][0])
+    print(format_entity_info(sensor, "IAQ Sensor"))
 
 
-def control_iaq_sensor(client, system_id, sensor_id, ventilation_mode=None):
+@handle_cli_errors
+def control_iaq_sensor(client: AirzoneClient, system_id: int, sensor_id: int, 
+                      ventilation_mode: Optional[int] = None):
     """Control an IAQ sensor."""
-    try:
-        print(f"Controlling IAQ sensor {sensor_id} in system {system_id}...")
-        
-        # Get current sensor data first
-        sensor_data = client.get_iaq_sensor(system_id, sensor_id)
-        if not (isinstance(sensor_data, dict) and "data" in sensor_data and sensor_data["data"]):
-            print(f"IAQ sensor {sensor_id} not found in system {system_id}")
-            return
-            
-        sensor_info = sensor_data["data"][0] if isinstance(sensor_data["data"], list) else sensor_data["data"]
-        sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_info)
-        
-        current_vent_mode = sensor.ventilation_mode
-        if current_vent_mode is None:
-            print("Ventilation control is not available for this sensor (VMC off)")
-            if ventilation_mode is not None:
-                print("Cannot set ventilation mode when VMC is off")
-                return
-        
-        # Show current status
-        print(f"\nCurrent status:")
-        print(f"  Air Quality: {sensor.iaq_index_name} (Score: {sensor.iaq_score}/100)")
-        if current_vent_mode is not None:
-            mode_names = {0: "Off", 1: "On", 2: "Auto"}
-            print(f"  Ventilation Mode: {mode_names.get(current_vent_mode, 'Unknown')} ({current_vent_mode})")
-        
-        # Apply changes
-        changes_made = False
-        
-        if ventilation_mode is not None:
-            if current_vent_mode is None:
-                print(f"Cannot set ventilation mode to {ventilation_mode} - VMC is off")
-            else:
-                mode_names = {0: "Off", 1: "On", 2: "Auto"}
-                print(f"\nSetting ventilation mode to {mode_names.get(ventilation_mode, 'Unknown')} ({ventilation_mode})...")
-                sensor.set_ventilation_mode(ventilation_mode)
-                changes_made = True
-        
-        if changes_made:
-            # Refresh and show new status
-            sensor.refresh(force_refresh=True)
-            print(f"\nNew status:")
-            if sensor.ventilation_mode is not None:
-                mode_names = {0: "Off", 1: "On", 2: "Auto"}
-                print(f"  Ventilation Mode: {mode_names.get(sensor.ventilation_mode, 'Unknown')} ({sensor.ventilation_mode})")
-        else:
-            print("\nNo changes requested")
-            
-    except Exception as e:
-        print(f"Error controlling IAQ sensor: {str(e)}")
+    sensor = AirzoneIAQSensor(client, system_id, sensor_id)
+    sensor.refresh()
+    
+    print(f"Controlling IAQ sensor: {sensor.name}")
+    print(f"Initial ventilation mode: {sensor.ventilation_mode_name}")
+    
+    if ventilation_mode is not None:
+        old_mode = sensor.ventilation_mode_name
+        sensor.ventilation_mode = ventilation_mode
+        print(f"Ventilation mode changed: {old_mode} -> {sensor.ventilation_mode_name}")
+    else:
+        print("No changes specified")
+
+
+# Backup commands
+@handle_cli_errors
+def backup_create(client: AirzoneClient):
+    """Create a backup."""
+    backup = AirzoneBackup(client)
+    backup_file = backup.create_backup()
+    print(f"Backup created: {backup_file}")
+
+
+@handle_cli_errors
+def backup_list(client: AirzoneClient):
+    """List available backups."""
+    backup = AirzoneBackup(client)
+    backups = backup.list_backups()
+    
+    if not backups:
+        print("No backups found")
+        return
+    
+    print("\nAvailable backups:")
+    for b in backups:
+        print(f"  {b}")
+
+
+@handle_cli_errors
+def backup_validate(client: AirzoneClient, backup_file: str):
+    """Validate a backup file."""
+    backup = AirzoneBackup(client)
+    is_valid, message = backup.validate_backup(backup_file)
+    
+    if is_valid:
+        print(f"✓ Backup is valid: {message}")
+    else:
+        print(f"✗ Backup is invalid: {message}")
+
+
+@handle_cli_errors
+def backup_restore(client: AirzoneClient, backup_file: str, dry_run: bool = False):
+    """Restore from a backup."""
+    backup = AirzoneBackup(client)
+    
+    if dry_run:
+        print("DRY RUN - No changes will be applied")
+    
+    changes = backup.restore_backup(backup_file, dry_run=dry_run)
+    
+    if changes:
+        print(f"\n{'Would apply' if dry_run else 'Applied'} {len(changes)} changes")
+    else:
+        print("No changes needed")
 
 
 def main():
-    """Main CLI function."""
-    parser = argparse.ArgumentParser(description="Airzone HVAC Control System")
-    parser.add_argument("--host", default=DEFAULT_HOST, help="Airzone device IP address")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Airzone API port")
-    parser.add_argument("--no-cache", action="store_true", help="Disable caching")
-    parser.add_argument("--force-refresh", action="store_true", help="Force refresh from API")
-    
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
-    # System commands
-    list_parser = subparsers.add_parser("list", help="List all systems and zones")
-    
-    status_parser = subparsers.add_parser("status", help="Get status of a specific zone")
-    status_parser.add_argument("--system", type=int, required=True, help="System ID")
-    status_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
-    status_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
-    check_parser = subparsers.add_parser("check", help="Check systems against expected configuration")
-    check_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    check_parser.add_argument("--summary", action="store_true", help="Show only summary information")
-    check_parser.add_argument("--brief", action="store_true", help="Show brief status with errors highlighted")
-    
-    errors_parser = subparsers.add_parser("errors", help="Check for errors in all systems")
-    
-    # Validate command
-    validate_parser = subparsers.add_parser("validate", help="Show validation info for a zone")
-    validate_parser.add_argument("--system", type=int, required=True, help="System ID")
-    validate_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
-    
-    # Control command
-    control_parser = subparsers.add_parser("control", help="Control a specific zone")
-    control_parser.add_argument("--system", type=int, required=True, help="System ID")
-    control_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
-    control_parser.add_argument("--power", choices=["on", "off"], help="Turn zone on or off")
-    control_parser.add_argument("--setpoint", type=float, help="Set temperature setpoint")
-    control_parser.add_argument("--mode", type=int, choices=[1, 2, 3, 4, 5], 
-                                help="Set mode (1: stop, 2: cooling, 3: heating, 4: ventilation, 5: dehumidify)")
-    control_parser.add_argument("--sleep", type=int, help="Set sleep timer in minutes (0 to disable)")
-    control_parser.add_argument("--fan-speed", type=int, help="Set fan speed")
-    control_parser.add_argument("--slats-vertical", type=int, help="Set vertical slat position")
-    control_parser.add_argument("--slats-horizontal", type=int, help="Set horizontal slat position")
-    control_parser.add_argument("--vertical-swing", choices=["on", "off"], help="Enable/disable vertical swing")
-    control_parser.add_argument("--horizontal-swing", choices=["on", "off"], help="Enable/disable horizontal swing")
-    
-    # IAQ commands
-    iaq_parser = subparsers.add_parser("iaq", help="Indoor Air Quality sensor operations")
-    iaq_subparsers = iaq_parser.add_subparsers(dest="iaq_command", help="IAQ command")
-    
-    # IAQ list command
-    iaq_list_parser = iaq_subparsers.add_parser("list", help="List all IAQ sensors")
-    
-    # IAQ status command
-    iaq_status_parser = iaq_subparsers.add_parser("status", help="Get status of a specific IAQ sensor")
-    iaq_status_parser.add_argument("--system", type=int, required=True, help="System ID")
-    iaq_status_parser.add_argument("--sensor", type=int, required=True, help="IAQ sensor ID")
-    
-    # IAQ control command
-    iaq_control_parser = iaq_subparsers.add_parser("control", help="Control a specific IAQ sensor")
-    iaq_control_parser.add_argument("--system", type=int, required=True, help="System ID")
-    iaq_control_parser.add_argument("--sensor", type=int, required=True, help="IAQ sensor ID")
-    iaq_control_parser.add_argument("--ventilation", type=int, choices=[0, 1, 2], 
-                                   help="Set ventilation mode (0=Off, 1=On, 2=Auto)")
-    
-    # Backup commands
-    backup_parser = subparsers.add_parser("backup", help="Backup operations")
-    backup_subparsers = backup_parser.add_subparsers(dest="backup_command", help="Backup command")
-    
-    create_parser = backup_subparsers.add_parser("create", help="Create a new backup")
-    create_parser.add_argument("--output", "-o", help="Output file path")
-    
-    list_backups_parser = backup_subparsers.add_parser("list", help="List available backups")
-    
-    validate_parser = backup_subparsers.add_parser("validate", help="Validate a backup file")
-    validate_parser.add_argument("file", help="Backup file to validate")
-    
-    restore_parser = backup_subparsers.add_parser("restore", help="Restore from a backup")
-    restore_parser.add_argument("file", help="Backup file to restore from")
-    restore_parser.add_argument("--dry-run", "-d", action="store_true", help="Perform a dry run without applying changes")
-    
-    args = parser.parse_args()
-    
-    # Create client
-    client = AirzoneClient(
-        host=args.host, 
-        port=args.port,
-        use_cache=not args.no_cache
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(
+        description="Airzone HVAC Control CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    try:
-        # Handle main commands
-        if args.command == "list":
-            list_systems(client, force_refresh=args.force_refresh)
-            
-        elif args.command == "status":
-            get_zone_status(client, args.system, args.zone, args.json, force_refresh=args.force_refresh)
-            
-        elif args.command == "check":
-            if hasattr(args, 'summary') and args.summary:
-                check_systems(client, force_refresh=args.force_refresh, json_output=args.json, summary_only=True)
-            elif hasattr(args, 'brief') and args.brief:
-                check_systems(client, force_refresh=args.force_refresh, json_output=args.json, brief_mode=True)
-            else:
-                check_systems(client, force_refresh=args.force_refresh, json_output=args.json)
-            
-        elif args.command == "errors":
-            check_system_errors()
-            
-        elif args.command == "validate":
-            show_zone_validation(client, args.system, args.zone)
-            
-        elif args.command == "control":
-            control_zone(client, args.system, args.zone, args.power, args.setpoint, args.mode,
-                        getattr(args, 'sleep', None), getattr(args, 'fan_speed', None),
-                        getattr(args, 'slats_vertical', None), getattr(args, 'slats_horizontal', None),
-                        getattr(args, 'vertical_swing', None), getattr(args, 'horizontal_swing', None))
-            
-        # Handle IAQ commands
-        elif args.command == "iaq":
-            if args.iaq_command == "list":
-                list_iaq_sensors(client, force_refresh=args.force_refresh)
-                
-            elif args.iaq_command == "status":
-                get_iaq_sensor_status(client, args.system, args.sensor, force_refresh=args.force_refresh)
-                
-            elif args.iaq_command == "control":
-                control_iaq_sensor(client, args.system, args.sensor, args.ventilation)
-                
-            else:
-                iaq_parser.print_help()
-            
-        # Handle backup commands
-        elif args.command == "backup":
-            backup_mgr = AirzoneBackup(client)
-            
-            if args.backup_command == "create":
-                backup_file = backup_mgr.create_backup(args.output)
-                print(f"Backup created: {backup_file}")
-                
-            elif args.backup_command == "list":
-                backup_mgr.list_backups()
-                
-            elif args.backup_command == "validate":
-                is_valid = backup_mgr.validate_backup(args.file)
-                if is_valid:
-                    print(f"✅ Backup file {args.file} is valid")
-                else:
-                    print(f"❌ Backup file {args.file} is NOT valid")
-                    return 1
-                    
-            elif args.backup_command == "restore":
-                success = backup_mgr.restore_from_backup(args.file, args.dry_run)
-                if success:
-                    if args.dry_run:
-                        print("Dry run completed successfully - no changes applied")
-                    else:
-                        print("Restore completed successfully")
-                else:
-                    print("Restore failed")
-                    return 1
-                    
-            else:
-                backup_parser.print_help()
-                
+    # Global options
+    parser.add_argument("--host", default=DEFAULT_HOST, 
+                       help=f"Airzone host IP (default: {DEFAULT_HOST})")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+                       help=f"Airzone port (default: {DEFAULT_PORT})")
+    parser.add_argument("--no-cache", action="store_true",
+                       help="Disable caching")
+    parser.add_argument("--force-refresh", action="store_true",
+                       help="Force refresh from API")
+    
+    # Subcommands
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # List command
+    list_parser = subparsers.add_parser("list", help="List all systems and zones")
+    list_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    
+    # Status command
+    status_parser = subparsers.add_parser("status", help="Get zone status")
+    status_parser.add_argument("--system", type=int, required=True, help="System ID")
+    status_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
+    status_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    
+    # Control command
+    control_parser = subparsers.add_parser("control", help="Control a zone")
+    control_parser.add_argument("--system", type=int, required=True, help="System ID")
+    control_parser.add_argument("--zone", type=int, required=True, help="Zone ID")
+    control_parser.add_argument("--power", choices=["on", "off"], help="Power on/off")
+    control_parser.add_argument("--setpoint", type=float, help="Temperature setpoint")
+    control_parser.add_argument("--mode", type=int, choices=[1,2,3,4,5],
+                               help="Mode (1=Stop, 2=Cool, 3=Heat, 4=Vent, 5=Dehumidify)")
+    control_parser.add_argument("--fan-speed", type=int, help="Fan speed")
+    control_parser.add_argument("--sleep", type=int, help="Sleep timer (minutes)")
+    
+    # Error check command
+    subparsers.add_parser("errors", help="Check for system errors")
+    
+    # System check command
+    check_parser = subparsers.add_parser("check", help="Check system configuration")
+    check_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    
+    # IAQ commands
+    iaq_parser = subparsers.add_parser("iaq", help="IAQ sensor commands")
+    iaq_subparsers = iaq_parser.add_subparsers(dest="iaq_command", help="IAQ command")
+    
+    iaq_list = iaq_subparsers.add_parser("list", help="List all IAQ sensors")
+    
+    iaq_status = iaq_subparsers.add_parser("status", help="Get IAQ sensor status")
+    iaq_status.add_argument("--system", type=int, required=True, help="System ID")
+    iaq_status.add_argument("--sensor", type=int, required=True, help="Sensor ID")
+    
+    iaq_control = iaq_subparsers.add_parser("control", help="Control IAQ sensor")
+    iaq_control.add_argument("--system", type=int, required=True, help="System ID")
+    iaq_control.add_argument("--sensor", type=int, required=True, help="Sensor ID")
+    iaq_control.add_argument("--ventilation", type=int, choices=[0,1,2],
+                            help="Ventilation mode (0=Off, 1=On, 2=Auto)")
+    
+    # Backup commands
+    backup_parser = subparsers.add_parser("backup", help="Backup commands")
+    backup_subparsers = backup_parser.add_subparsers(dest="backup_command")
+    
+    backup_subparsers.add_parser("create", help="Create a new backup")
+    backup_subparsers.add_parser("list", help="List available backups")
+    
+    validate_parser = backup_subparsers.add_parser("validate", help="Validate backup")
+    validate_parser.add_argument("file", help="Backup file to validate")
+    
+    restore_parser = backup_subparsers.add_parser("restore", help="Restore backup")
+    restore_parser.add_argument("file", help="Backup file to restore")
+    restore_parser.add_argument("--dry-run", action="store_true", 
+                               help="Preview changes without applying")
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return 0
+    
+    # Create client
+    client = create_client(args.host, args.port, args.no_cache)
+    
+    # Command dispatch
+    if args.command == "list":
+        list_systems(client, args.force_refresh, args.json)
+    
+    elif args.command == "status":
+        get_zone_status(client, args.system, args.zone, args.json, args.force_refresh)
+    
+    elif args.command == "control":
+        params = {}
+        if args.power:
+            params['power'] = args.power
+        if args.setpoint is not None:
+            params['setpoint'] = args.setpoint
+        if args.mode is not None:
+            params['mode'] = args.mode
+        if args.fan_speed is not None:
+            params['fan_speed'] = args.fan_speed
+        if args.sleep is not None:
+            params['sleep'] = args.sleep
+        
+        control_zone(client, args.system, args.zone, **params)
+    
+    elif args.command == "errors":
+        check_errors_command(client)
+    
+    elif args.command == "check":
+        check_system_command(client, args.json)
+    
+    elif args.command == "iaq":
+        if args.iaq_command == "list":
+            list_iaq_sensors(client, args.force_refresh)
+        elif args.iaq_command == "status":
+            get_iaq_sensor_status(client, args.system, args.sensor, args.force_refresh)
+        elif args.iaq_command == "control":
+            control_iaq_sensor(client, args.system, args.sensor, args.ventilation)
+    
+    elif args.command == "backup":
+        if args.backup_command == "create":
+            backup_create(client)
+        elif args.backup_command == "list":
+            backup_list(client)
+        elif args.backup_command == "validate":
+            backup_validate(client, args.file)
+        elif args.backup_command == "restore":
+            backup_restore(client, args.file, args.dry_run)
         else:
-            parser.print_help()
-            
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        logger.error(f"Error running command: {str(e)}")
-        return 1
+            backup_parser.print_help()
     
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
