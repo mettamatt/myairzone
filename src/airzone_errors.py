@@ -5,12 +5,17 @@ import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
+# Ensure logs directory exists
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("airzone_errors.log"),
+        logging.FileHandler(os.path.join(log_dir, "airzone_errors.log")),
         logging.StreamHandler()
     ]
 )
