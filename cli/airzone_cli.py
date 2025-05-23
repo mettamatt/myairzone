@@ -224,7 +224,9 @@ def get_zone_status(client, system_id, zone_id, json_output=False, force_refresh
     except Exception as e:
         print(f"Error getting zone status: {str(e)}")
 
-def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=None):
+def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=None, 
+                 sleep=None, fan_speed=None, slats_vertical=None, slats_horizontal=None,
+                 vertical_swing=None, horizontal_swing=None):
     """Control a specific zone.
     
     Args:
@@ -234,6 +236,12 @@ def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=Non
         power: 'on' or 'off'
         setpoint: Temperature setpoint
         mode: Mode ID (1: stop, 2: cooling, 3: heating, 4: ventilation, 5: dehumidify)
+        sleep: Sleep timer in minutes
+        fan_speed: Fan speed value
+        slats_vertical: Vertical slat position
+        slats_horizontal: Horizontal slat position
+        vertical_swing: 'on' or 'off' for vertical swing
+        horizontal_swing: 'on' or 'off' for horizontal swing
     """
     try:
         # Get system
@@ -287,6 +295,60 @@ def control_zone(client, system_id, zone_id, power=None, setpoint=None, mode=Non
             changes_applied = True
             print(f"Mode: {old_mode_name} -> {mode_names.get(mode, f'Unknown ({mode})')}")
         
+        # Sleep timer
+        if sleep is not None:
+            old_sleep = zone.sleep_timer
+            if sleep != old_sleep:
+                zone.sleep_timer = sleep
+                changes_applied = True
+                if sleep == 0:
+                    print(f"Sleep: {old_sleep}min -> Disabled")
+                else:
+                    print(f"Sleep: {old_sleep}min -> {sleep}min")
+        
+        # Fan speed
+        if fan_speed is not None:
+            old_speed = zone.fan_speed
+            if fan_speed != old_speed:
+                try:
+                    zone.fan_speed = fan_speed
+                    changes_applied = True
+                    print(f"Fan Speed: {old_speed} -> {fan_speed}")
+                except ValueError as e:
+                    print(f"Fan Speed Error: {e}")
+        
+        # Slat positions
+        if slats_vertical is not None:
+            old_slats = zone.slats_vertical
+            if slats_vertical != old_slats:
+                zone.slats_vertical = slats_vertical
+                changes_applied = True
+                print(f"Vertical Slats: {old_slats} -> {slats_vertical}")
+        
+        if slats_horizontal is not None:
+            old_slats = zone.slats_horizontal
+            if slats_horizontal != old_slats:
+                zone.slats_horizontal = slats_horizontal
+                changes_applied = True
+                print(f"Horizontal Slats: {old_slats} -> {slats_horizontal}")
+        
+        # Swing settings
+        if vertical_swing is not None:
+            old_swing = zone.vertical_swing
+            new_swing = vertical_swing.lower() == "on"
+            if new_swing != old_swing:
+                zone.vertical_swing = new_swing
+                changes_applied = True
+                print(f"Vertical Swing: {'On' if old_swing else 'Off'} -> {'On' if new_swing else 'Off'}")
+        
+        if horizontal_swing is not None:
+            old_swing = zone.horizontal_swing
+            new_swing = horizontal_swing.lower() == "on"
+            if new_swing != old_swing:
+                zone.horizontal_swing = new_swing
+                changes_applied = True
+                print(f"Horizontal Swing: {'On' if old_swing else 'Off'} -> {'On' if new_swing else 'Off'}")
+        
         if not changes_applied:
             print("No changes applied")
         else:
@@ -330,6 +392,12 @@ def main():
     control_parser.add_argument("--setpoint", type=float, help="Set temperature setpoint")
     control_parser.add_argument("--mode", type=int, choices=[1, 2, 3, 4, 5], 
                                 help="Set mode (1: stop, 2: cooling, 3: heating, 4: ventilation, 5: dehumidify)")
+    control_parser.add_argument("--sleep", type=int, help="Set sleep timer in minutes (0 to disable)")
+    control_parser.add_argument("--fan-speed", type=int, help="Set fan speed")
+    control_parser.add_argument("--slats-vertical", type=int, help="Set vertical slat position")
+    control_parser.add_argument("--slats-horizontal", type=int, help="Set horizontal slat position")
+    control_parser.add_argument("--vertical-swing", choices=["on", "off"], help="Enable/disable vertical swing")
+    control_parser.add_argument("--horizontal-swing", choices=["on", "off"], help="Enable/disable horizontal swing")
     
     # Backup commands
     backup_parser = subparsers.add_parser("backup", help="Backup operations")
@@ -376,7 +444,10 @@ def main():
             check_system_errors()
             
         elif args.command == "control":
-            control_zone(client, args.system, args.zone, args.power, args.setpoint, args.mode)
+            control_zone(client, args.system, args.zone, args.power, args.setpoint, args.mode,
+                        getattr(args, 'sleep', None), getattr(args, 'fan_speed', None),
+                        getattr(args, 'slats_vertical', None), getattr(args, 'slats_horizontal', None),
+                        getattr(args, 'vertical_swing', None), getattr(args, 'horizontal_swing', None))
             
         # Handle backup commands
         elif args.command == "backup":
