@@ -24,7 +24,7 @@ from scripts.check_system import check_systems
 from scripts.check_errors import check_system_errors
 
 # Import our utilities
-from utils import handle_cli_errors, print_json_or_text, format_entity_info, create_client
+from .utils import handle_cli_errors, print_json_or_text, format_entity_info, create_client
 
 # Configure logging
 logging.basicConfig(
