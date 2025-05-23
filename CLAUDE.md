@@ -48,20 +48,26 @@ The codebase has been refactored for better maintainability and reduced duplicat
 ### Main Entry Point
 - **airzone_cli.py**: Wrapper that imports from cli/airzone_cli.py
 
+### Documentation (docs/)
+- **airzonelapi_openapi.yaml**: Official Airzone Local API OpenAPI specification
+
 ## System Information
 - Airzone device located at: `192.168.1.100:3000`
 - Device Alias: TestDevice
 - MAC Address: 00:11:22:33:44:55
 - 4 systems with zones: Salón, Oficina, D. Invitado, D.Carmen, D Principal, D. Max, D Annelise, Distribuido
+- **mDNS Support**: Devices can be accessed via .local hostnames (e.g., AZW5GRA052.local)
 
 ## API Structure
-All API requests are POST requests with JSON payloads. Main endpoints:
-- Version: `POST /api/v1/version`
-- Systems: `POST /api/v1/hvac` with `{"systemID": 127}`
-- Zones: `POST /api/v1/hvac` with `{"systemID": 0, "zoneID": 0}`
-- Control: `POST /api/v1/hvac` with control parameters
-- IAQ: `POST /api/v1/iaq` for sensor data
-- PUT requests for control operations
+The API supports both POST (with JSON body) and GET (with query parameters) for data retrieval:
+- Version: `POST /api/v1/version` or `GET /api/v1/version`
+- Systems: `POST /api/v1/hvac` with `{"systemID": 127}` or `GET /api/v1/hvac?systemid=127`
+- Zones: `POST /api/v1/hvac` with `{"systemID": 0, "zoneID": 0}` or `GET /api/v1/hvac?systemid=0&zoneid=0`
+- Control: `PUT /api/v1/hvac` with control parameters
+- IAQ: `POST /api/v1/iaq` for sensor data or `GET /api/v1/iaq?systemid=1&iaqsensorid=1`
+- Integration: `POST /api/v1/integration` for driver info, `PUT /api/v1/integration` to set driver
+
+**IMPORTANT**: The complete Airzone Local API specification is available at `docs/airzonelapi_openapi.yaml` and should be used as the authoritative reference for all API endpoints, parameters, and response formats.
 
 ## Key Design Patterns
 1. **Modular Structure**: Each entity (Client, System, Zone, IAQSensor) has its own module
