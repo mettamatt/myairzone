@@ -30,82 +30,98 @@ class AirzoneIAQSensor:
         self.logger = logging.getLogger(f"airzone_iaq_{system_id}_{sensor_id}")
     
     def refresh(self, force_refresh: bool = False) -> None:
-        """Refresh sensor data.
+        """Refresh sensor data (from zone data).
         
         Args:
             force_refresh: Force refresh from API
         """
-        response = self.client.get_iaq_sensor(self.system_id, self.sensor_id, force_refresh)
+        # Get zone data since IAQ is embedded in zones (sensor_id = zone_id)
+        response = self.client.get_zone(self.system_id, self.sensor_id, force_refresh)
         if isinstance(response, dict) and "data" in response:
-            sensor_list = response["data"]
-            if isinstance(sensor_list, list) and len(sensor_list) > 0:
-                self._data = sensor_list[0]
+            zone_list = response["data"]
+            if isinstance(zone_list, list) and len(zone_list) > 0:
+                self._data = zone_list[0]
             else:
-                self._data = sensor_list
+                self._data = zone_list
         else:
             self._data = response
     
     # Basic properties
     @property
     def name(self) -> str:
-        """Get sensor name."""
-        return self._data.get("name", f"IAQ Sensor {self.sensor_id}")
+        """Get sensor name (zone name for IAQ)."""
+        return self._data.get("name", f"Zone {self.sensor_id}")
     
-    # Air quality measurements (read-only)
+    # Air quality measurements (zone-based parameters)
     @property
     def co2_level(self) -> float:
-        """Get CO2 level in ppm."""
+        """Get CO2 level in ppm (not available in zone-based IAQ)."""
         return self._data.get("co2_value", 0.0)
     
     @property
     def pm2_5_level(self) -> float:
-        """Get PM2.5 level in μg/m³."""
+        """Get PM2.5 level in μg/m³ (not available in zone-based IAQ)."""
         return self._data.get("pm2_5_value", 0.0)
     
     @property
     def pm10_level(self) -> float:
-        """Get PM10 level in μg/m³."""
+        """Get PM10 level in μg/m³ (not available in zone-based IAQ)."""
         return self._data.get("pm10_value", 0.0)
     
     @property
     def tvoc_level(self) -> float:
-        """Get TVOC level in ppb."""
+        """Get TVOC level in ppb (not available in zone-based IAQ)."""
         return self._data.get("tvoc_value", 0.0)
     
     @property
     def pressure(self) -> float:
-        """Get atmospheric pressure in hPa."""
+        """Get atmospheric pressure in hPa (not available in zone-based IAQ)."""
         return self._data.get("pressure_value", 0.0)
     
     @property
     def iaq_index(self) -> int:
-        """Get air quality index (1=Good, 2=Medium, 3=Bad)."""
-        return self._data.get("iaq_index", 0)
+        """Get air quality index from zone aq_quality parameter."""
+        return self._data.get("aq_quality", 0)
     
     @property
     def iaq_quality(self) -> str:
         """Get air quality as text."""
-        return IAQ_QUALITY_INDEX.get(self.iaq_index, "Unknown")
+        quality_map = {0: "Good", 1: "Medium", 2: "Poor"}
+        return quality_map.get(self.iaq_index, "Unknown")
     
     @property
     def iaq_score(self) -> int:
-        """Get air quality score (0-100)."""
-        return self._data.get("iaq_score", 0)
+        """Get air quality score (derived from aq_quality)."""
+        # Convert aq_quality to a score-like value
+        quality = self._data.get("aq_quality", 0)
+        score_map = {0: 90, 1: 60, 2: 30}  # Good=90, Medium=60, Poor=30
+        return score_map.get(quality, 0)
+    
+    @property
+    def low_threshold(self) -> int:
+        """Get air quality low threshold."""
+        return self._data.get("aq_thrlow", 0)
+    
+    @property
+    def high_threshold(self) -> int:
+        """Get air quality high threshold."""
+        return self._data.get("aq_thrhigh", 0)
 
-    # Ventilation control
+    # Ventilation control (zone-based air quality mode)
     @property
     def ventilation_mode(self) -> int:
-        """Get ventilation mode (0=Off, 1=On, 2=Auto)."""
-        return self._data.get("iaq_mode_vent", 0)
+        """Get air quality mode from zone aq_mode parameter."""
+        return self._data.get("aq_mode", 0)
     
     @property
     def ventilation_mode_name(self) -> str:
-        """Get ventilation mode name."""
-        return IAQ_VENTILATION_MODES.get(self.ventilation_mode, "Unknown")
+        """Get air quality mode name."""
+        mode_map = {0: "Off", 1: "On", 2: "Auto"}
+        return mode_map.get(self.ventilation_mode, "Unknown")
     
     @ventilation_mode.setter
     def ventilation_mode(self, mode: int) -> None:
-        """Set ventilation mode.
+        """Set air quality mode.
         
         Args:
             mode: 0=Off, 1=On, 2=Auto
@@ -113,11 +129,12 @@ class AirzoneIAQSensor:
         Raises:
             ValueError: If mode is invalid
         """
-        if mode not in IAQ_VENTILATION_MODES:
-            raise ValueError(f"Invalid ventilation mode: {mode}. Valid: 0=Off, 1=On, 2=Auto")
+        if mode not in [0, 1, 2]:
+            raise ValueError(f"Invalid air quality mode: {mode}. Valid: 0=Off, 1=On, 2=Auto")
         
-        self.client.set_iaq_parameters(self.system_id, self.sensor_id, {"iaq_mode_vent": mode})
-        self._data["iaq_mode_vent"] = mode
+        # Use zone control to set aq_mode (sensor_id = zone_id)
+        self.client.set_zone_parameters(self.system_id, self.sensor_id, {"aq_mode": mode})
+        self._data["aq_mode"] = mode
     
     def set_ventilation_mode(self, mode: Union[int, str]) -> None:
         """Set ventilation mode by ID or name.
