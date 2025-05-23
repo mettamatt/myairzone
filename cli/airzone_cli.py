@@ -8,7 +8,7 @@ from datetime import datetime
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone
+from src.airzone_client import AirzoneClient, AirzoneSystem, AirzoneZone, AirzoneIAQSensor
 from src.airzone_backup import AirzoneBackup
 from src.airzone_errors import print_error_details
 
@@ -428,6 +428,142 @@ def show_zone_validation(client, system_id, zone_id):
     except Exception as e:
         print(f"Error getting validation info: {str(e)}")
 
+
+def list_iaq_sensors(client, force_refresh=False):
+    """List all IAQ sensors."""
+    try:
+        print("Getting IAQ sensors...")
+        print("Note: IAQ sensors are only available on Flexa 3.6.6 devices")
+        
+        # Try to get IAQ sensors from system 1
+        sensors_data = client.get_all_iaq_sensors(force_refresh=force_refresh)
+        
+        if isinstance(sensors_data, dict) and "data" in sensors_data and sensors_data["data"]:
+            sensors = sensors_data["data"]
+            if isinstance(sensors, list) and len(sensors) > 0:
+                print(f"\nFound {len(sensors)} IAQ sensor(s):")
+                
+                for sensor_data in sensors:
+                    system_id = sensor_data.get("systemID", "Unknown")
+                    sensor_id = sensor_data.get("airqsensorID", "Unknown")
+                    name = sensor_data.get("name", f"IAQ Sensor {sensor_id}")
+                    
+                    sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data)
+                    
+                    print(f"\n  System {system_id}, Sensor {sensor_id}: {name}")
+                    print(f"    Air Quality: {sensor.iaq_index_name} (Score: {sensor.iaq_score}/100)")
+                    print(f"    CO2: {sensor.co2_level} ppm")
+                    print(f"    PM2.5: {sensor.pm25_level} μg/m³")
+                    print(f"    PM10: {sensor.pm10_level} μg/m³")
+                    print(f"    TVOC: {sensor.tvoc_level} ppb")
+                    print(f"    Pressure: {sensor.pressure} hPa")
+                    
+                    vent_mode = sensor.ventilation_mode
+                    if vent_mode is not None:
+                        mode_names = {0: "Off", 1: "On", 2: "Auto"}
+                        print(f"    Ventilation: {mode_names.get(vent_mode, 'Unknown')} ({vent_mode})")
+                    else:
+                        print(f"    Ventilation: Not available (VMC off)")
+            else:
+                print("No IAQ sensors found")
+        else:
+            print("No IAQ sensors found - device may not support IAQ sensors")
+            print("IAQ sensors require a Flexa 3.6.6 device")
+            
+    except Exception as e:
+        print(f"Error retrieving IAQ sensors: {str(e)}")
+        print("This is expected if the device doesn't support IAQ sensors (requires Flexa 3.6.6)")
+
+
+def get_iaq_sensor_status(client, system_id, sensor_id, force_refresh=False):
+    """Get detailed status of a specific IAQ sensor."""
+    try:
+        print(f"Getting IAQ sensor {sensor_id} status from system {system_id}...")
+        
+        sensor_data = client.get_iaq_sensor(system_id, sensor_id, force_refresh=force_refresh)
+        
+        if isinstance(sensor_data, dict) and "data" in sensor_data and sensor_data["data"]:
+            sensor_info = sensor_data["data"][0] if isinstance(sensor_data["data"], list) else sensor_data["data"]
+            sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_info)
+            
+            print(f"\nIAQ Sensor {sensor_id} (System {system_id}):")
+            print(f"  Name: {sensor.name}")
+            print(f"  Overall Air Quality: {sensor.iaq_index_name} (Index: {sensor.iaq_index}, Score: {sensor.iaq_score}/100)")
+            print(f"\n  Measurements:")
+            print(f"    CO2 Level: {sensor.co2_level} ppm")
+            print(f"    PM2.5 Level: {sensor.pm25_level} μg/m³")
+            print(f"    PM10 Level: {sensor.pm10_level} μg/m³")
+            print(f"    TVOC Level: {sensor.tvoc_level} ppb")
+            print(f"    Pressure: {sensor.pressure} hPa")
+            
+            vent_mode = sensor.ventilation_mode
+            if vent_mode is not None:
+                mode_names = {0: "Off", 1: "On", 2: "Auto"}
+                print(f"\n  Ventilation Mode: {mode_names.get(vent_mode, 'Unknown')} ({vent_mode})")
+                print(f"    Available modes: 0=Off, 1=On, 2=Auto")
+            else:
+                print(f"\n  Ventilation Mode: Not available (VMC off)")
+        else:
+            print(f"IAQ sensor {sensor_id} not found in system {system_id}")
+            
+    except Exception as e:
+        print(f"Error retrieving IAQ sensor status: {str(e)}")
+
+
+def control_iaq_sensor(client, system_id, sensor_id, ventilation_mode=None):
+    """Control an IAQ sensor."""
+    try:
+        print(f"Controlling IAQ sensor {sensor_id} in system {system_id}...")
+        
+        # Get current sensor data first
+        sensor_data = client.get_iaq_sensor(system_id, sensor_id)
+        if not (isinstance(sensor_data, dict) and "data" in sensor_data and sensor_data["data"]):
+            print(f"IAQ sensor {sensor_id} not found in system {system_id}")
+            return
+            
+        sensor_info = sensor_data["data"][0] if isinstance(sensor_data["data"], list) else sensor_data["data"]
+        sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_info)
+        
+        current_vent_mode = sensor.ventilation_mode
+        if current_vent_mode is None:
+            print("Ventilation control is not available for this sensor (VMC off)")
+            if ventilation_mode is not None:
+                print("Cannot set ventilation mode when VMC is off")
+                return
+        
+        # Show current status
+        print(f"\nCurrent status:")
+        print(f"  Air Quality: {sensor.iaq_index_name} (Score: {sensor.iaq_score}/100)")
+        if current_vent_mode is not None:
+            mode_names = {0: "Off", 1: "On", 2: "Auto"}
+            print(f"  Ventilation Mode: {mode_names.get(current_vent_mode, 'Unknown')} ({current_vent_mode})")
+        
+        # Apply changes
+        changes_made = False
+        
+        if ventilation_mode is not None:
+            if current_vent_mode is None:
+                print(f"Cannot set ventilation mode to {ventilation_mode} - VMC is off")
+            else:
+                mode_names = {0: "Off", 1: "On", 2: "Auto"}
+                print(f"\nSetting ventilation mode to {mode_names.get(ventilation_mode, 'Unknown')} ({ventilation_mode})...")
+                sensor.set_ventilation_mode(ventilation_mode)
+                changes_made = True
+        
+        if changes_made:
+            # Refresh and show new status
+            sensor.refresh(force_refresh=True)
+            print(f"\nNew status:")
+            if sensor.ventilation_mode is not None:
+                mode_names = {0: "Off", 1: "On", 2: "Auto"}
+                print(f"  Ventilation Mode: {mode_names.get(sensor.ventilation_mode, 'Unknown')} ({sensor.ventilation_mode})")
+        else:
+            print("\nNo changes requested")
+            
+    except Exception as e:
+        print(f"Error controlling IAQ sensor: {str(e)}")
+
+
 def main():
     """Main CLI function."""
     parser = argparse.ArgumentParser(description="Airzone HVAC Control System")
@@ -472,6 +608,25 @@ def main():
     control_parser.add_argument("--slats-horizontal", type=int, help="Set horizontal slat position")
     control_parser.add_argument("--vertical-swing", choices=["on", "off"], help="Enable/disable vertical swing")
     control_parser.add_argument("--horizontal-swing", choices=["on", "off"], help="Enable/disable horizontal swing")
+    
+    # IAQ commands
+    iaq_parser = subparsers.add_parser("iaq", help="Indoor Air Quality sensor operations")
+    iaq_subparsers = iaq_parser.add_subparsers(dest="iaq_command", help="IAQ command")
+    
+    # IAQ list command
+    iaq_list_parser = iaq_subparsers.add_parser("list", help="List all IAQ sensors")
+    
+    # IAQ status command
+    iaq_status_parser = iaq_subparsers.add_parser("status", help="Get status of a specific IAQ sensor")
+    iaq_status_parser.add_argument("--system", type=int, required=True, help="System ID")
+    iaq_status_parser.add_argument("--sensor", type=int, required=True, help="IAQ sensor ID")
+    
+    # IAQ control command
+    iaq_control_parser = iaq_subparsers.add_parser("control", help="Control a specific IAQ sensor")
+    iaq_control_parser.add_argument("--system", type=int, required=True, help="System ID")
+    iaq_control_parser.add_argument("--sensor", type=int, required=True, help="IAQ sensor ID")
+    iaq_control_parser.add_argument("--ventilation", type=int, choices=[0, 1, 2], 
+                                   help="Set ventilation mode (0=Off, 1=On, 2=Auto)")
     
     # Backup commands
     backup_parser = subparsers.add_parser("backup", help="Backup operations")
@@ -525,6 +680,20 @@ def main():
                         getattr(args, 'sleep', None), getattr(args, 'fan_speed', None),
                         getattr(args, 'slats_vertical', None), getattr(args, 'slats_horizontal', None),
                         getattr(args, 'vertical_swing', None), getattr(args, 'horizontal_swing', None))
+            
+        # Handle IAQ commands
+        elif args.command == "iaq":
+            if args.iaq_command == "list":
+                list_iaq_sensors(client, force_refresh=args.force_refresh)
+                
+            elif args.iaq_command == "status":
+                get_iaq_sensor_status(client, args.system, args.sensor, force_refresh=args.force_refresh)
+                
+            elif args.iaq_command == "control":
+                control_iaq_sensor(client, args.system, args.sensor, args.ventilation)
+                
+            else:
+                iaq_parser.print_help()
             
         # Handle backup commands
         elif args.command == "backup":
