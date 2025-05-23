@@ -164,14 +164,148 @@ class AirzoneBackup:
                 print("\nNo changes applied (dry run)")
                 return True
             
-            # For actual restore, we would restore each zone's state
-            # This is limited because Airzone doesn't provide a full restore API
-            # We can only restore settings like on/off state, temperature, mode
+            # Implement partial restore for controllable parameters
+            restored_count = 0
+            failed_count = 0
             
-            # TODO: Implement full restore logic here
-            # For now, just log that this would require customized logic
-            logger.warning("Full restore not implemented - would require device-specific logic")
-            return False
+            print("\n=== RESTORING CONTROLLABLE PARAMETERS ===")
+            
+            # Get current zone data to compare
+            current_zones = self.client.get_all_zones()
+            current_zone_map = {}
+            
+            # Handle different current zone structures
+            if "data" in current_zones:
+                for zone_data in current_zones["data"]:
+                    system_id = zone_data.get("systemID")
+                    zone_id = zone_data.get("zoneID")
+                    if system_id is not None and zone_id is not None:
+                        current_zone_map[f"{system_id}_{zone_id}"] = zone_data
+            elif "systems" in current_zones:
+                # Extract zones from all systems
+                for system in current_zones["systems"]:
+                    if "data" in system:
+                        for zone_data in system["data"]:
+                            system_id = zone_data.get("systemID")
+                            zone_id = zone_data.get("zoneID")
+                            if system_id is not None and zone_id is not None:
+                                current_zone_map[f"{system_id}_{zone_id}"] = zone_data
+            
+            # Restore zones from backup
+            backup_zones = []
+            zones_data = backup_data.get("zones", {})
+            
+            # Handle different backup structures
+            if "data" in zones_data:
+                backup_zones = zones_data["data"]
+            elif "systems" in zones_data:
+                # Extract zones from all systems
+                for system in zones_data["systems"]:
+                    if "data" in system:
+                        backup_zones.extend(system["data"])
+            
+            for backup_zone in backup_zones:
+                system_id = backup_zone.get("systemID")
+                zone_id = backup_zone.get("zoneID")
+                zone_name = backup_zone.get("name", f"Zone {zone_id}")
+                
+                if system_id is None or zone_id is None:
+                    continue
+                    
+                zone_key = f"{system_id}_{zone_id}"
+                current_zone = current_zone_map.get(zone_key)
+                
+                if not current_zone:
+                    print(f"  ⚠️  Zone {zone_name} (S{system_id}Z{zone_id}) not found in current system")
+                    failed_count += 1
+                    continue
+                
+                changes_made = []
+                
+                try:
+                    # Restore power state
+                    backup_on = backup_zone.get("on", 0)
+                    current_on = current_zone.get("on", 0)
+                    if backup_on != current_on:
+                        self.client.set_zone_parameters(system_id, zone_id, {"on": backup_on})
+                        changes_made.append(f"Power: {'On' if backup_on else 'Off'}")
+                    
+                    # Restore setpoint
+                    backup_setpoint = backup_zone.get("setpoint")
+                    current_setpoint = current_zone.get("setpoint")
+                    if backup_setpoint is not None and current_setpoint is not None:
+                        if abs(backup_setpoint - current_setpoint) > 0.1:  # Allow small float differences
+                            self.client.set_zone_parameters(system_id, zone_id, {"setpoint": backup_setpoint})
+                            changes_made.append(f"Setpoint: {backup_setpoint}°C")
+                    
+                    # Restore mode
+                    backup_mode = backup_zone.get("mode")
+                    current_mode = current_zone.get("mode")
+                    if backup_mode is not None and backup_mode != current_mode:
+                        self.client.set_zone_parameters(system_id, zone_id, {"mode": backup_mode})
+                        mode_names = {1: "Stop", 2: "Cooling", 3: "Heating", 4: "Ventilation", 5: "Dehumidify"}
+                        mode_name = mode_names.get(backup_mode, f"Mode {backup_mode}")
+                        changes_made.append(f"Mode: {mode_name}")
+                    
+                    # Restore sleep timer
+                    backup_sleep = backup_zone.get("sleep")
+                    current_sleep = current_zone.get("sleep")
+                    if backup_sleep is not None and current_sleep is not None and backup_sleep != current_sleep:
+                        self.client.set_zone_parameters(system_id, zone_id, {"sleep": backup_sleep})
+                        if backup_sleep == 0:
+                            changes_made.append("Sleep: Disabled")
+                        else:
+                            changes_made.append(f"Sleep: {backup_sleep}min")
+                    
+                    # Restore fan speed (if supported)
+                    backup_speed = backup_zone.get("speed")
+                    current_speed = current_zone.get("speed")
+                    if backup_speed is not None and current_speed is not None and backup_speed != current_speed:
+                        # Check if zone supports fan speed control
+                        if backup_zone.get("speed_values") or current_zone.get("speed_values"):
+                            self.client.set_zone_parameters(system_id, zone_id, {"speed": backup_speed})
+                            changes_made.append(f"Fan Speed: {backup_speed}")
+                    
+                    # Restore slat positions (if supported)
+                    for slat_param in ["slats_vertical", "slats_horizontal"]:
+                        backup_slat = backup_zone.get(slat_param)
+                        current_slat = current_zone.get(slat_param)
+                        if backup_slat is not None and current_slat is not None and backup_slat != current_slat:
+                            self.client.set_zone_parameters(system_id, zone_id, {slat_param: backup_slat})
+                            param_name = "V-Slats" if "vertical" in slat_param else "H-Slats"
+                            changes_made.append(f"{param_name}: {backup_slat}")
+                    
+                    # Restore swing settings (if supported)
+                    for swing_param in ["slats_vswing", "slats_hswing"]:
+                        backup_swing = backup_zone.get(swing_param)
+                        current_swing = current_zone.get(swing_param)
+                        if backup_swing is not None and current_swing is not None and backup_swing != current_swing:
+                            self.client.set_zone_parameters(system_id, zone_id, {swing_param: backup_swing})
+                            swing_name = "V-Swing" if "vswing" in swing_param else "H-Swing"
+                            swing_value = "On" if backup_swing == 1 else "Off"
+                            changes_made.append(f"{swing_name}: {swing_value}")
+                    
+                    if changes_made:
+                        print(f"  ✅ {zone_name} (S{system_id}Z{zone_id}): {', '.join(changes_made)}")
+                        restored_count += 1
+                    else:
+                        print(f"  ➡️  {zone_name} (S{system_id}Z{zone_id}): No changes needed")
+                        
+                except Exception as e:
+                    print(f"  ❌ {zone_name} (S{system_id}Z{zone_id}): Failed - {str(e)}")
+                    failed_count += 1
+            
+            print(f"\n=== RESTORE SUMMARY ===")
+            print(f"Zones restored: {restored_count}")
+            print(f"Zones failed: {failed_count}")
+            print(f"Total zones processed: {len(backup_zones)}")
+            
+            if failed_count == 0:
+                print("✅ Restore completed successfully")
+                return True
+            else:
+                print("⚠️  Restore completed with some failures")
+                return restored_count > 0
             
         except Exception as e:
             logger.error(f"Restore failed: {str(e)}")
