@@ -239,53 +239,84 @@ def check_system_command(client: AirzoneClient, json_output: bool = False):
 
 @handle_cli_errors
 def list_iaq_sensors(client: AirzoneClient, force_refresh: bool = False):
-    """List all IAQ sensors."""
-    sensors_data = client.get_all_iaq_sensors(force_refresh)
+    """List all IAQ sensors (zones with air quality capability)."""
+    zones_data = client.get_all_zones(force_refresh)
     
-    if "data" not in sensors_data or not sensors_data["data"]:
+    if "systems" not in zones_data:
+        print("No systems found")
+        return
+    
+    iaq_zones = []
+    for system in zones_data["systems"]:
+        if "data" in system:
+            for zone_data in system["data"]:
+                # Check if this zone has air quality parameters
+                if any(key.startswith("aq_") for key in zone_data.keys()):
+                    system_id = zone_data.get("systemID")
+                    zone_id = zone_data.get("zoneID")
+                    if system_id is not None and zone_id is not None:
+                        # Create IAQ sensor using zone data (sensor_id = zone_id)
+                        sensor = AirzoneIAQSensor(client, system_id, zone_id, zone_data)
+                        iaq_zones.append(sensor)
+    
+    if not iaq_zones:
         print("No IAQ sensors found")
         return
     
     print("\n--- IAQ Sensors ---")
-    for sensor_data in sensors_data["data"]:
-        system_id = sensor_data.get("systemID", 1)
-        sensor_id = sensor_data.get("id")
-        
-        if sensor_id is None:
-            continue
-        
-        sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data)
+    for sensor in iaq_zones:
         print(format_entity_info(sensor, "IAQ Sensor"))
 
 
 @handle_cli_errors
 def get_iaq_sensor_status(client: AirzoneClient, system_id: int, sensor_id: int, 
                          force_refresh: bool = False):
-    """Get status of a specific IAQ sensor."""
-    sensor_data = client.get_iaq_sensor(system_id, sensor_id, force_refresh)
+    """Get status of a specific IAQ sensor (zone with air quality capability)."""
+    # Get zone data (sensor_id maps to zone_id)
+    zone_data = client.get_zone(system_id, sensor_id, force_refresh)
     
-    if "data" not in sensor_data or not sensor_data["data"]:
-        print(f"IAQ sensor {sensor_id} not found in system {system_id}")
+    if "data" not in zone_data or not zone_data["data"]:
+        print(f"Zone {sensor_id} not found in system {system_id}")
         return
     
-    sensor = AirzoneIAQSensor(client, system_id, sensor_id, sensor_data["data"][0])
+    zone_info = zone_data["data"][0]
+    
+    # Check if this zone has air quality parameters
+    if not any(key.startswith("aq_") for key in zone_info.keys()):
+        print(f"Zone {sensor_id} in system {system_id} does not have air quality capability")
+        return
+    
+    sensor = AirzoneIAQSensor(client, system_id, sensor_id, zone_info)
     print(format_entity_info(sensor, "IAQ Sensor"))
 
 
 @handle_cli_errors
 def control_iaq_sensor(client: AirzoneClient, system_id: int, sensor_id: int, 
                       ventilation_mode: Optional[int] = None):
-    """Control an IAQ sensor."""
-    sensor = AirzoneIAQSensor(client, system_id, sensor_id)
-    sensor.refresh()
+    """Control an IAQ sensor (zone air quality settings)."""
+    # Get zone data first (sensor_id maps to zone_id)
+    zone_data = client.get_zone(system_id, sensor_id, False)
+    
+    if "data" not in zone_data or not zone_data["data"]:
+        print(f"Zone {sensor_id} not found in system {system_id}")
+        return
+    
+    zone_info = zone_data["data"][0]
+    
+    # Check if this zone has air quality parameters
+    if not any(key.startswith("aq_") for key in zone_info.keys()):
+        print(f"Zone {sensor_id} in system {system_id} does not have air quality capability")
+        return
+    
+    sensor = AirzoneIAQSensor(client, system_id, sensor_id, zone_info)
     
     print(f"Controlling IAQ sensor: {sensor.name}")
-    print(f"Initial ventilation mode: {sensor.ventilation_mode_name}")
+    print(f"Initial air quality mode: {sensor.ventilation_mode_name}")
     
     if ventilation_mode is not None:
         old_mode = sensor.ventilation_mode_name
         sensor.ventilation_mode = ventilation_mode
-        print(f"Ventilation mode changed: {old_mode} -> {sensor.ventilation_mode_name}")
+        print(f"Air quality mode changed: {old_mode} -> {sensor.ventilation_mode_name}")
     else:
         print("No changes specified")
 
