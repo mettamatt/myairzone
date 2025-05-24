@@ -153,6 +153,8 @@ def test_cli_shows_zone_status():
     # Capture stdout to verify behavior
     with patch('sys.stdout', new_callable=io.StringIO) as mock_stdout, \
          patch('sys.argv', ['control_airzone.py', 'status', '--system', '1', '--zone', '1']), \
+         patch('cli.airzone_cli.DEFAULT_HOST', TEST_HOST), \
+         patch('cli.airzone_cli.DEFAULT_PORT', TEST_PORT), \
          patch('cli.utils.create_client') as mock_create_client:
         
         # Mock create_client to return a test client
@@ -203,6 +205,8 @@ def test_cli_outputs_json():
     # Capture stdout to verify behavior
     with patch('sys.stdout', new_callable=io.StringIO) as mock_stdout, \
          patch('sys.argv', ['control_airzone.py', 'status', '--system', '1', '--zone', '1', '--json']), \
+         patch('cli.airzone_cli.DEFAULT_HOST', TEST_HOST), \
+         patch('cli.airzone_cli.DEFAULT_PORT', TEST_PORT), \
          patch('cli.utils.create_client') as mock_create_client:
         
         # Mock create_client to return a test client

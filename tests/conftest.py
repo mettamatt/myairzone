@@ -67,3 +67,16 @@ def create_test_client():
         from src.client import AirzoneClient
         return AirzoneClient(host=host, port=port, use_cache=use_cache)
     return _create_client
+
+@pytest.fixture
+def mock_cli_environment():
+    """Mock CLI environment to use test values instead of real .env config."""
+    from unittest.mock import patch
+    
+    # Test configuration
+    TEST_HOST = "192.168.1.100"
+    TEST_PORT = 3000
+    
+    with patch('cli.airzone_cli.DEFAULT_HOST', TEST_HOST), \
+         patch('cli.airzone_cli.DEFAULT_PORT', TEST_PORT):
+        yield TEST_HOST, TEST_PORT
